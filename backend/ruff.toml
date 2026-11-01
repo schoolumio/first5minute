@@ -1,0 +1,11 @@
+line-length = 140
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["B008", "S101", "S105", "S106", "E731", "UP017"]
+
+[lint.per-file-ignores]
+"tests/*" = ["S", "E501"]
+"app/providers/football/demo.py" = ["S311"]  # seeded synthetic data, not security-sensitive
+"alembic/versions/*" = ["E501", "I001"]
