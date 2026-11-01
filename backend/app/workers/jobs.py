@@ -46,13 +46,22 @@ def job_backtest(db: Session, days: int = 120) -> dict:
             for m in ("MARKET_A", "MARKET_B")} | {"is_demo": report["is_demo"], "skipped": report["skipped"]}
 
 
+def job_train(db: Session, n_blocks: int = 6, auto_promote: bool = True) -> dict:
+    """Train + walk-forward evaluate candidates. Promotion only if every statistical gate passes."""
+    from app.engine.ml.training import train_all
+
+    out = train_all(db, n_blocks=n_blocks, auto_promote=auto_promote)
+    db.commit()
+    return out
+
+
 def job_expire(db: Session) -> dict:
     n = expire_subscriptions(db)
     db.commit()
     return {"expired": n}
 
 
-JOBS = {"sync": job_sync, "scan": job_scan, "settle": job_settle, "backtest": job_backtest, "expire": job_expire}
+JOBS = {"sync": job_sync, "scan": job_scan, "settle": job_settle, "backtest": job_backtest, "train": job_train, "expire": job_expire}
 
 
 def run_named(db: Session, name: str) -> dict:

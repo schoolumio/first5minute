@@ -71,6 +71,7 @@ pip install -r requirements-dev.txt
 alembic upgrade head                                   # create schema + reference data
 python -m app.cli create-admin --email you@example.com # prompts for a password
 python -m app.cli seed-demo                            # DEMO data + replayed predictions + backtest
+python -m app.cli train                                # Phase 3: train & walk-forward evaluate ML models
 uvicorn app.main:app --reload --port 8000              # API docs: http://localhost:8000/api/docs
 ```
 
@@ -87,6 +88,7 @@ celery -A app.workers.celery_app beat -l info
 ```
 
 Schedule: fixture sync every 30 min · scanner at :05/:35 · settlement every 15 min · subscription expiry hourly · walk-forward backtest nightly.
+Weekly (Sunday 04:23 UTC) the **train** job evaluates the advanced models and promotes one only if every statistical gate passes.
 Every job can also be run on demand from **Admin → Providers & sync** or with `python -m app.cli <job>`.
 
 ### Frontend
@@ -143,11 +145,24 @@ cd backend && pytest          # needs a PostgreSQL test DB (TEST_DATABASE_URL, d
 cd backend && ruff check .
 ```
 
+### Machine-learning models (Phase 3)
+
+```bash
+cd backend
+python -m app.cli train                  # evaluate candidates; register versions; promote only if all gates pass
+python -m app.cli train --no-promote     # evaluate and register only
+python -m app.cli rollback-model --market MARKET_A
+```
+
+Set `MODEL_DIR` (persist it!) and optionally `MLFLOW_TRACKING_URI` (`pip install -r requirements-ml.txt`;
+MLflow 3 needs a database backend such as `sqlite:///mlflow.db` or a tracking server). Review candidates in
+**Admin > Models**. See `docs/ARCHITECTURE.md` section 3b for the methodology and promotion gates.
+
 ```bash
 cd frontend && npm test && npm run typecheck && npm run build
 ```
 
-The backend suite (78 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
+The backend suite (97 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
 rules, Poisson calculations, ingestion/normalisation, provider adapters with mock payloads, retry and
 rate limiting, data-leakage guards, prediction immutability, settlement corrections, walk-forward
 backtesting, plan permissions, admin permissions and Paystack webhooks.

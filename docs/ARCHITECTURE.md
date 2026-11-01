@@ -76,13 +76,51 @@ unique index keeps one *current* prediction per fixture and market. New pre-kick
 row and supersedes the old one. Each row stores model version, settlement rule, input-data hash,
 probability, components, data quality and confidence.
 
+## 3b. Advanced models (Phase 3)
+
+All candidates are per market and trained on a leak-free dataset (`engine/ml/dataset.py`): one row per
+finished fixture with a reconciled timeline; features come from the *same* as-of-kickoff code path as live
+predictions; labels are the settled outcome.
+
+| Candidate | What it is |
+|---|---|
+| `poisson_baseline` | Phase-2 model, unchanged - the reference every candidate must beat |
+| `climatology` | training base rate only - what "no information" scores; also a gate |
+| `hier_eb_poisson` | **Empirical-Bayes** hierarchical Poisson: league to team partial pooling; the shrinkage strength is fitted by predictive likelihood of observed early-goal counts instead of a fixed constant. (Not a full MCMC Bayesian hierarchy.) |
+| `logistic` | L2-regularised logistic regression on 27 pre-kickoff features |
+| `lightgbm_residual` | LightGBM with the baseline logit as `init_score`: tiny trees, strong regularisation; learns residuals only, so small samples stay at the baseline |
+| `ensemble` | equal-weight mean in logit space of the three above (no fitted weights, hence no extra look-ahead) |
+| `+platt` / `+isotonic` | calibration variants: Platt below 800 samples, isotonic above, none below 60 |
+
+**Evaluation (`engine/ml/evaluation.py`)** is expanding-window, out-of-fold: rows are cut into time blocks
+snapped to calendar days; each test block is predicted by models trained only on rows that kicked off at least
+3h earlier (embargo = match length). Calibrators are fitted only on earlier blocks' out-of-fold predictions.
+Every variant is scored on the same rows (Brier, log loss, ECE, precision/recall) and compared with the baseline and
+climatology using a **paired bootstrap** of per-match log loss (95% CI).
+
+**Promotion gates** - a model replaces the baseline automatically only if *all* hold: not trained on demo data;
+at least `ML_MIN_OOS_SAMPLE` (300) out-of-sample matches; log-loss CI vs baseline entirely below zero; CI vs
+climatology entirely below zero; calibration error no worse than max(baseline, 0.03). Otherwise the version is
+registered (inactive) with the reasons in its notes. `calibration_status` is `calibrated` only when a calibrated
+variant passes the gates, `demo_only` for demo-trained models, else `uncalibrated`. Admins can override via
+*Admin > Models* (explicit confirmation, audit-logged) and roll back to the baseline at any time.
+
+**Serving**: the scanner uses the active model per market (joblib artifact in `MODEL_DIR`); if an artifact is missing
+or fails, that fixture falls back to the baseline and the prediction says so. Predictions made with a model are new
+immutable rows; rolling back or forward never edits history (migration 0003 lets the same model be re-activated).
+Confidence labels still derive from the baseline's posterior uncertainty (approximate for ML estimates).
+
+**Honest status on the demo data**: with 131 out-of-sample matches, no candidate beats the baseline
+significantly and the base-rate reference scores best, so nothing is promoted. That is the gates working;
+real conclusions require real, much larger histories.
+
 ## 4. Phase status
 
 | Phase | Status | Notes |
 |---|---|---|
 | 1. Setup, architecture, database, auth, design system | **Done** | 29-table schema, migrations, cookie+bearer auth, verification, reset, lockout, CSRF, rate limiting, design tokens & components |
 | 2. Provider integrations & historical DB | **Done (adapters), pending live verification** | API-Football & Sportmonks adapters built from documentation and tested with mock payloads; **not yet verified against live APIs** (no keys available). Historical backfill command per competition still to add. |
-| 3. Statistical engine & backtesting | **Baseline done** | Poisson A/B, smoothing, metrics, walk-forward. Logistic regression, LightGBM, hierarchical Bayes, ensembles, calibration (isotonic/Platt) and MLflow tracking remain (`requirements-ml.txt`). |
+| 3. Statistical engine & backtesting | **Done** | Baseline Poisson A/B plus logistic regression, LightGBM, empirical-Bayes hierarchical Poisson, equal-weight ensemble, Platt/isotonic calibration, walk-forward evaluation with paired-bootstrap significance, promotion gates, model registry/activation/rollback and optional MLflow tracking (see section 3b). Full MCMC Bayesian hierarchical models (PyMC/Stan) are not implemented. |
 | 4. Scanner & dashboard | **Done** | Scanner API + UI with filters/sorting, dashboard, match details with charts, prediction history & performance |
 | 5. Odds & assisted links | **Partial** | Odds abstraction, API-Football odds mapping (conservative), bookmaker admin, deep-link templates, execution-adapter interface. Needs an odds source that actually prices five-minute markets. |
 | 6. Subscriptions, users, notifications | **Mostly done** | Plans, Paystack checkout/verify/webhook, cancel/expiry, invoices, in-app notifications. Email/push delivery of notifications and Paystack recurring authorisation (auto-renew charge) remain. |
@@ -93,7 +131,8 @@ probability, components, data quality and confidence.
 
 1. **Football data subscription** (API-Football or Sportmonks) with event timelines - coverage and
    timestamp precision vary per league; check before enabling competitions.
-2. **An odds source that prices five-minute markets.** Few bookmakers/aggregators expose them; without
+2. **Several seasons of real, timestamped history** per competition: the advanced models need on the order of
+   thousands of matches before they can credibly beat the baseline. **An odds source that prices five-minute markets** is the next constraint: Few bookmakers/aggregators expose them; without
    one, odds comparison and ROI analysis remain empty (by design).
 3. **Authorised sportsbook referral agreements** for deep links; execution APIs require operator approval.
 4. **Paystack account** (secret key, webhook URL). For recurring auto-charge, store authorisation codes

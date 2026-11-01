@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Play } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge, DemoBadge } from "@/components/ui/badge";
@@ -265,20 +265,76 @@ function SettingsTab() {
   );
 }
 
+interface VariantStats {
+  brier: number | null; log_loss: number | null; ece: number | null;
+  vs_baseline: { mean_diff: number | null; ci_low: number | null; ci_high: number | null } | null;
+}
+interface ModelRow {
+  id: number; market: string; name: string; version: string; algorithm: string; is_active: boolean; calibration_status: string;
+  notes: string | null; mlflow_run_id: string | null; created_at: string; predictions: number;
+  walk_forward: { metric: string; value: number | null; sample_size: number; is_demo: boolean; details: { variants?: Record<string, VariantStats>; decision?: { eligible: boolean; reasons: string[] }; variant?: string } }[];
+}
+
 function Models() {
-  const { data } = useApi<{ models: { id: number; market: string; name: string; version: string; algorithm: string; is_active: boolean; calibration_status: string; predictions: number;
-    walk_forward: { metric: string; value: number | null; sample_size: number; is_demo: boolean }[] }[] }>("/admin/model-performance");
+  const { data, reload } = useApi<{ models: ModelRow[] }>("/admin/model-performance");
+  const a = useAction();
+  const [open, setOpen] = useState<number | null>(null);
   if (!data) return <Skeleton className="h-40" />;
+  const activate = (mv: ModelRow) => {
+    const failed = (mv.notes ?? "").includes("NOT passed");
+    if (failed && !confirm(`${mv.name} v${mv.version} did NOT pass the promotion gates:\n\n${mv.notes}\n\nActivate anyway? This is recorded in the audit log.`)) return;
+    a.run(`act${mv.id}`, async () => { await api(`/admin/models/${mv.id}/activate`, { method: "POST", body: { acknowledge_not_eligible: failed } }); reload(); },
+      "Model activated - upcoming fixtures are re-predicted on the next scan (earlier predictions are kept).");
+  };
+  const rollback = (market: string) => a.run(`rb${market}`, async () => { await api(`/admin/models/${market}/rollback`, { method: "POST" }); reload(); }, "Baseline Poisson model is active again.");
   return (
-    <Card>
-      <CardHeader title="Model versions" description="Compare walk-forward metrics across versions" />
-      <Table><thead><tr><Th>Market</Th><Th>Model</Th><Th>Status</Th><Th className="text-right">Predictions</Th><Th className="text-right">Brier</Th><Th className="text-right">Log loss</Th><Th className="text-right">ECE</Th><Th className="text-right">Backtest n</Th></tr></thead>
-        <tbody>{data.models.map((mv) => { const g = (k: string) => mv.walk_forward.find((x) => x.metric === k); return (
-          <tr key={mv.id}><Td>{mv.market}</Td><Td>{mv.name} <span className="text-xs text-subtle">v{mv.version} · {mv.algorithm}</span></Td>
-            <Td>{mv.is_active ? <Badge tone="brand">active</Badge> : <Badge>inactive</Badge>} <Badge>{mv.calibration_status}</Badge></Td>
-            <Td className="tabular text-right">{mv.predictions}</Td><Td className="tabular text-right">{num(g("brier")?.value)}</Td><Td className="tabular text-right">{num(g("log_loss")?.value)}</Td>
-            <Td className="tabular text-right">{num(g("ece")?.value)}</Td><Td className="tabular text-right">{g("brier")?.sample_size ?? "-"} {g("brier")?.is_demo && <DemoBadge />}</Td></tr>); })}</tbody></Table>
-    </Card>
+    <div className="space-y-6">
+      {a.msg && <Alert tone={a.msg.tone}>{a.msg.text}</Alert>}
+      <Alert tone="info" title="How models are promoted">
+        Candidates are evaluated walk-forward (trained only on earlier matches). A model is promoted automatically only if it beats the Poisson baseline
+        with a 95% confidence interval excluding zero, beats a base-rate-only reference, has enough out-of-sample matches and is not trained on demo data.
+      </Alert>
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" loading={a.busy === "train"} onClick={() => a.run("train", async () => { await api("/admin/jobs", { method: "POST", body: { job: "train" } }); reload(); }, "Training finished - see new versions below.")}>
+          <Play className="h-3.5 w-3.5" /> Train &amp; evaluate candidates
+        </Button>
+        {["MARKET_A", "MARKET_B"].map((m) => <Button key={m} size="sm" variant="ghost" loading={a.busy === `rb${m}`} onClick={() => rollback(m)}>Roll back {m === "MARKET_A" ? "A" : "B"} to baseline</Button>)}
+      </div>
+      <Card>
+        <CardHeader title="Model versions" description="Out-of-sample (walk-forward) metrics; lower is better" />
+        <Table><thead><tr><Th>Market</Th><Th>Model</Th><Th>Status</Th><Th className="text-right">Live preds</Th><Th className="text-right">Brier</Th><Th className="text-right">Log loss</Th><Th className="text-right">ECE</Th><Th className="text-right">OOS n</Th><Th /></tr></thead>
+          <tbody>{data.models.map((mv) => { const g = (k: string) => mv.walk_forward.find((x) => x.metric === k); const ll = g("log_loss"); return (
+            <Fragment key={mv.id}>
+              <tr>
+                <Td>{mv.market}</Td>
+                <Td>{mv.name} <span className="text-xs text-subtle">{mv.version.startsWith("ml-") ? mv.version : `v${mv.version}`}</span></Td>
+                <Td className="whitespace-nowrap">{mv.is_active ? <Badge tone="brand">active</Badge> : <Badge>inactive</Badge>} <Badge tone={mv.calibration_status === "calibrated" ? "brand" : mv.calibration_status === "demo_only" ? "demo" : "neutral"}>{mv.calibration_status.replace("_", " ")}</Badge></Td>
+                <Td className="tabular text-right">{mv.predictions}</Td>
+                <Td className="tabular text-right">{num(g("brier")?.value)}</Td><Td className="tabular text-right">{num(ll?.value)}</Td><Td className="tabular text-right">{num(g("ece")?.value)}</Td>
+                <Td className="tabular text-right">{ll?.sample_size ?? "-"} {ll?.is_demo && <DemoBadge />}</Td>
+                <Td className="whitespace-nowrap text-right">
+                  {ll?.details?.variants && <Button size="sm" variant="ghost" onClick={() => setOpen(open === mv.id ? null : mv.id)}>{open === mv.id ? "Hide" : "Compare"}</Button>}
+                  {!mv.is_active && <Button size="sm" variant="outline" loading={a.busy === `act${mv.id}`} onClick={() => activate(mv)}>Activate</Button>}
+                </Td>
+              </tr>
+              {open === mv.id && ll?.details?.variants && (
+                <tr><Td colSpan={9} className="bg-surface-2/50">
+                  <p className="mb-2 text-xs text-muted">{mv.notes}</p>
+                  {mv.mlflow_run_id && <p className="mb-2 font-[family-name:var(--font-mono)] text-[11px] text-subtle">MLflow run {mv.mlflow_run_id}</p>}
+                  <Table><thead><tr><Th>Candidate</Th><Th className="text-right">Log loss</Th><Th className="text-right">Brier</Th><Th className="text-right">ECE</Th><Th className="text-right">Δ log loss vs baseline (95% CI)</Th></tr></thead>
+                    <tbody>{Object.entries(ll.details.variants).sort((x, y) => (x[1].log_loss ?? 9) - (y[1].log_loss ?? 9)).map(([name, v]) => {
+                      const d = v.vs_baseline; const sig = d && d.ci_high != null && d.ci_high < 0;
+                      return (<tr key={name} className={name === ll.details.variant ? "bg-brand-500/5" : ""}>
+                        <Td className="font-[family-name:var(--font-mono)] text-xs">{name}{name === ll.details.variant && <Badge tone="brand" className="ml-2">selected</Badge>}</Td>
+                        <Td className="tabular text-right">{num(v.log_loss, 4)}</Td><Td className="tabular text-right">{num(v.brier, 4)}</Td><Td className="tabular text-right">{num(v.ece)}</Td>
+                        <Td className="tabular text-right text-xs">{d ? <span className={sig ? "text-brand-400" : "text-muted"}>{(d.mean_diff ?? 0) >= 0 ? "+" : ""}{num(d.mean_diff, 4)} [{num(d.ci_low, 4)}, {num(d.ci_high, 4)}]{sig && " ✓"}</span> : "reference"}</Td>
+                      </tr>); })}</tbody></Table>
+                  <p className="mt-2 text-[11px] text-subtle">A candidate is only better than the baseline if the whole interval is below zero (✓). The base-rate-only row shows what no information at all would score.</p>
+                </Td></tr>
+              )}
+            </Fragment>); })}</tbody></Table>
+      </Card>
+    </div>
   );
 }
 

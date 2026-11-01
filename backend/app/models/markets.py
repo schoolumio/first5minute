@@ -18,6 +18,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -142,11 +143,13 @@ class Prediction(Base):
 
     __tablename__ = "predictions"
     __table_args__ = (
-        UniqueConstraint("fixture_id", "market_code", "model_version_id", "input_data_version"),
+        UniqueConstraint("fixture_id", "market_code", "model_version_id", "input_data_version", "predicted_at",
+                         name="fixture_market_model_inputs_at"),
         CheckConstraint("probability >= 0 AND probability <= 1", name="probability_range"),
         CheckConstraint("predicted_at < kickoff_at", name="pre_kickoff"),
         Index("ix_predictions_fixture_market_current", "fixture_id", "market_code", "is_current"),
         Index("ix_predictions_kickoff", "kickoff_at"),
+        Index("uq_predictions_one_current", "fixture_id", "market_code", unique=True, postgresql_where=text("is_current")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

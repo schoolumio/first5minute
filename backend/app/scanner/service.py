@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import utcnow
 from app.core.logging import get_logger
+from app.engine.ml.serving import load_bundle
 from app.engine.predictor import analyse_fixture, categorize, confidence_label
 from app.engine.settlement import GoalTiming, Market, Result, settle
 from app.ingestion.service import Ingestor
@@ -40,6 +41,14 @@ log = get_logger(__name__)
 
 BASELINE_VERSION = "1.0.0"
 MARKETS = (Market.A.value, Market.B.value)
+
+
+def baseline_version(db: Session, market: str) -> ModelVersion:
+    mv = db.scalar(select(ModelVersion).where(ModelVersion.market_code == market, ModelVersion.algorithm == "poisson_baseline")
+                   .order_by(ModelVersion.id))
+    if mv is None:
+        mv = ensure_model_versions(db)[market]
+    return mv
 
 
 def ensure_model_versions(db: Session) -> dict[str, ModelVersion]:
@@ -124,6 +133,18 @@ def run_scan(db: Session, now: datetime | None = None, notify: bool = True, repl
                 summary.by_category[current.category] = summary.by_category.get(current.category, 0) + 1
                 continue
             category, reasons = categorize(analysis, market, thresholds)
+            used_mv, probability = mv, analysis.probability(market)
+            if mv.algorithm != "poisson_baseline":
+                try:
+                    probability = load_bundle(mv).predict_one(analysis, fx)
+                except Exception as exc:  # noqa: BLE001 - never lose a prediction because a model failed
+                    log.error("ml_model_failed_falling_back", model_version=mv.id, error=str(exc))
+                    used_mv = baseline_version(db, market)
+                    reasons = [*reasons, "active ML model unavailable - baseline Poisson used"]
+                    same_inputs = current is not None and current.input_data_version == analysis.input_version
+                    if same_inputs and current.model_version_id == used_mv.id:
+                        summary.unchanged += 1
+                        continue
             if current is not None:
                 current.is_current = False
                 current.superseded_at = now
@@ -131,15 +152,16 @@ def run_scan(db: Session, now: datetime | None = None, notify: bool = True, repl
             pred = Prediction(
                 fixture_id=fx.id,
                 market_code=market,
-                model_version_id=mv.id,
+                model_version_id=used_mv.id,
                 settlement_rule_id=rule_row.id,
                 predicted_at=now,
                 kickoff_at=fx.kickoff_at,
                 input_data_version=analysis.input_version,
-                probability=analysis.probability(market),
+                probability=probability,
                 lambda_home=analysis.probs.lambdas.home,
                 lambda_away=analysis.probs.lambdas.away,
-                components=_components(analysis, market),
+                components=_components(analysis, market)
+                | {"model_variant": used_mv.algorithm, "baseline_probability": round(analysis.probability(market), 5)},
                 confidence=confidence_label(analysis.uncertainty[market]),
                 data_quality=analysis.data_quality,
                 sample_home=analysis.home_rates.sample_size,

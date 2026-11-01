@@ -53,6 +53,12 @@ function PredictionPanel({ p, market }: { p?: Prediction; market: Market }) {
         <dt className="text-muted">Model</dt><dd className="text-right text-xs">{p.model.name} v{p.model.version} <Badge className="ml-1">{p.model.calibration_status}</Badge></dd>
         <dt className="text-muted">Predicted</dt><dd className="text-right text-xs">{new Date(p.predicted_at).toLocaleString()}</dd>
       </dl>
+      {typeof p.components.baseline_probability === "number" && p.components.model_variant !== "poisson_baseline" && (
+        <p className="mt-3 rounded-[var(--radius-md)] border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
+          Estimate from <span className="font-semibold text-fg">{String(p.components.model_variant).replace("_", " ")}</span>. The plain Poisson baseline gives{" "}
+          <span className="tabular font-semibold text-fg">{pct(p.components.baseline_probability as number)}</span>; the components below describe the baseline.
+        </p>
+      )}
       {levels && (
         <div className="mt-4 rounded-[var(--radius-md)] border border-border bg-surface-2 p-3 text-xs">
           <p className="mb-1.5 font-semibold text-muted">Level-score components</p>

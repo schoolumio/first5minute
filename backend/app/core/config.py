@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     # --- Odds --------------------------------------------------------------
     odds_provider: Literal["none", "api_football"] = "none"
 
+    # --- Machine learning ---------------------------------------------------
+    model_dir: str = "./model_store"          # joblib artifacts of trained models
+    mlflow_tracking_uri: str | None = None    # e.g. sqlite:///mlflow.db or http://mlflow:5000 (unset = no tracking)
+    mlflow_experiment: str = "project-five"
+    ml_min_oos_sample: int = 300              # out-of-sample settled matches required before a model may be promoted
+
     # --- Payments ----------------------------------------------------------
     payment_provider: Literal["none", "paystack"] = "none"
     paystack_secret_key: str | None = None

@@ -33,6 +33,7 @@ celery_app.conf.update(
         "scan": {"task": "app.workers.celery_app.scan", "schedule": crontab(minute="5,35")},
         "settle": {"task": "app.workers.celery_app.settle", "schedule": crontab(minute="*/15")},
         "expire-subscriptions": {"task": "app.workers.celery_app.expire_subscriptions", "schedule": crontab(minute=0)},
+        "train-weekly": {"task": "app.workers.celery_app.train", "schedule": crontab(day_of_week="sun", hour=4, minute=23)},
         "backtest-nightly": {"task": "app.workers.celery_app.backtest", "schedule": crontab(hour=3, minute=17)},
     },
 )
@@ -73,3 +74,8 @@ def expire_subscriptions() -> dict:
 @celery_app.task
 def backtest() -> dict:
     return _run("backtest")
+
+
+@celery_app.task
+def train() -> dict:
+    return _run("train")

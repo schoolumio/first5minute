@@ -114,6 +114,11 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("reset-demo")
     for job in ("sync", "scan", "settle", "backtest", "expire"):
         sub.add_parser(job)
+    t = sub.add_parser("train", help="train & walk-forward evaluate ML models (promotes only if all gates pass)")
+    t.add_argument("--blocks", type=int, default=6)
+    t.add_argument("--no-promote", action="store_true")
+    r = sub.add_parser("rollback-model", help="reactivate the Poisson baseline for a market")
+    r.add_argument("--market", choices=["MARKET_A", "MARKET_B"], required=True)
     args = parser.parse_args(argv)
     if args.cmd == "create-admin":
         create_admin(args.email, args.password)
@@ -123,6 +128,18 @@ def main(argv: list[str] | None = None) -> None:
         with SessionLocal() as db:
             reset_demo(db)
         print("Demo data removed")
+    elif args.cmd == "train":
+        from app.workers.jobs import job_train
+
+        with SessionLocal() as db:
+            print(json.dumps(job_train(db, args.blocks, not args.no_promote), indent=2, default=str))
+    elif args.cmd == "rollback-model":
+        from app.engine.ml.training import rollback_to_baseline
+
+        with SessionLocal() as db:
+            mv = rollback_to_baseline(db, args.market)
+            db.commit()
+            print(f"Active {args.market} model: {mv.name} v{mv.version}")
     else:
         from app.workers.jobs import run_named
 

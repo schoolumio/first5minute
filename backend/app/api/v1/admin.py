@@ -220,7 +220,7 @@ def missing_events(p: Pagination = Depends(), db: Session = Depends(get_db)) -> 
 
 
 class JobIn(BaseModel):
-    job: str = Field(pattern="^(sync|scan|settle|backtest)$")
+    job: str = Field(pattern="^(sync|scan|settle|backtest|train)$")
 
 
 @router.post("/jobs")
@@ -254,11 +254,51 @@ def model_performance(db: Session = Depends(get_db)) -> dict:
         out.append({
             "id": mv.id, "market": mv.market_code, "name": mv.name, "version": mv.version, "algorithm": mv.algorithm,
             "is_active": mv.is_active, "calibration_status": mv.calibration_status, "params": mv.params,
+            "notes": mv.notes, "mlflow_run_id": mv.mlflow_run_id, "created_at": mv.created_at.isoformat(),
             "predictions": live,
             "walk_forward": [{"metric": m.metric_name, "value": m.value, "sample_size": m.sample_size,
-                              "is_demo": m.is_demo, "created_at": m.created_at.isoformat()} for m in metrics],
+                              "is_demo": m.is_demo, "created_at": m.created_at.isoformat(), "details": m.details} for m in metrics],
         })
     return {"models": out, "live": {m: _performance(db, m, None, None) for m in ("MARKET_A", "MARKET_B")}}
+
+
+class ActivateIn(BaseModel):
+    acknowledge_not_eligible: bool = False
+
+
+@router.post("/models/{model_version_id}/activate")
+def activate_model_endpoint(model_version_id: int, body: ActivateIn, request: Request, admin: User = Depends(require_admin),
+                            db: Session = Depends(get_db)) -> dict:
+    """Manual promotion. Models that failed the statistical gates need an explicit acknowledgement."""
+    from app.engine.ml.training import activate_model
+
+    mv = db.get(ModelVersion, model_version_id)
+    if mv is None:
+        raise HTTPException(404, "Model version not found")
+    failed_gates = (mv.notes or "").find("NOT passed") >= 0
+    if failed_gates and not body.acknowledge_not_eligible:
+        raise HTTPException(409, {"message": "This model did not pass the promotion gates. Set acknowledge_not_eligible to override.",
+                                  "notes": mv.notes})
+    try:
+        activate_model(db, mv.id)
+    except FileNotFoundError as exc:
+        raise HTTPException(422, f"Model artifact unavailable: {exc}") from exc
+    audit(db, "admin.model_activated", admin.id, "model_version", mv.id,
+          {"market": mv.market_code, "version": mv.version, "override": failed_gates}, client_ip(request))
+    db.commit()
+    return {"active": mv.version, "market": mv.market_code, "overridden_gates": failed_gates}
+
+
+@router.post("/models/{market}/rollback")
+def rollback_model_endpoint(market: str, request: Request, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
+    from app.engine.ml.training import rollback_to_baseline
+
+    if market not in ("MARKET_A", "MARKET_B"):
+        raise HTTPException(404, "Unknown market")
+    mv = rollback_to_baseline(db, market)
+    audit(db, "admin.model_rollback", admin.id, "model_version", mv.id, {"market": market}, client_ip(request))
+    db.commit()
+    return {"active": mv.version, "market": market}
 
 
 # --- bookmakers ----------------------------------------------------------------
