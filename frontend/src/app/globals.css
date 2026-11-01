@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Project Five design tokens (First5Minute brand)
+   Navy/charcoal surfaces, brand green accent, white + muted text.
+   ------------------------------------------------------------------ */
+@theme {
+  --color-bg: #050b17;
+  --color-surface: #0b1424;
+  --color-surface-2: #101b2f;
+  --color-surface-3: #16233a;
+  --color-border: #1e2d47;
+  --color-border-strong: #2a3d5c;
+
+  --color-fg: #f4f7fb;
+  --color-muted: #94a3b8;
+  --color-subtle: #64748b;
+
+  --color-brand-50: #f1fbe9;
+  --color-brand-100: #def5cb;
+  --color-brand-300: #a4dd78;
+  --color-brand-400: #86d04f;
+  --color-brand-500: #6cc22e;
+  --color-brand-600: #55a11f;
+  --color-brand-700: #3f7a18;
+  --color-brand-900: #1b3510;
+
+  --color-info: #60a5fa;
+  --color-warn: #f5b84b;
+  --color-danger: #f87171;
+  --color-demo: #c084fc;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Montserrat", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 8px 24px -12px rgb(0 0 0 / 0.6);
+
+  --animate-fade-in: fade-in 0.35s ease-out both;
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+@layer base {
+  html { color-scheme: dark; }
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  ::selection { background: rgb(108 194 46 / 0.35); }
+  :focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; border-radius: 4px; }
+  .tabular { font-variant-numeric: tabular-nums; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* Subtle pitch-line grid used on hero surfaces */
+.pitch-grid {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+}

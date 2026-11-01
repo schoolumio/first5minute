@@ -49,7 +49,9 @@ class RegisterIn(BaseModel):
 
 
 class LoginIn(BaseModel):
-    email: EmailStr
+    # Plain string: login only looks up an existing account, so syntax rules that
+    # may change over time (e.g. reserved TLDs) must not lock users out.
+    email: str = Field(min_length=3, max_length=320)
     password: str = Field(max_length=128)
 
 

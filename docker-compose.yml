@@ -1,0 +1,65 @@
+# Local / single-host deployment of Project Five.
+#   cp .env.example .env   (then edit secrets)
+#   docker compose up --build
+#   docker compose exec api python -m app.cli create-admin --email you@example.com
+#   docker compose exec api python -m app.cli seed-demo      # only with FOOTBALL_PROVIDER=demo
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: five
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-five}
+      POSTGRES_DB: projectfive
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U five -d projectfive"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://five:${POSTGRES_PASSWORD:-five}@db:5432/projectfive
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports: ["8000:8000"]
+
+  worker:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://five:${POSTGRES_PASSWORD:-five}@db:5432/projectfive
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A app.workers.celery_app worker -l info -Q default,ingestion --concurrency 2
+    depends_on: [api]
+
+  beat:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://five:${POSTGRES_PASSWORD:-five}@db:5432/projectfive
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A app.workers.celery_app beat -l info
+    depends_on: [api]
+
+  web:
+    build:
+      context: ./frontend
+      args: { BACKEND_URL: "http://api:8000" }
+    environment:
+      BACKEND_URL: http://api:8000
+    depends_on: [api]
+    ports: ["3000:3000"]
+
+volumes:
+  pgdata:

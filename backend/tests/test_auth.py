@@ -110,3 +110,9 @@ def test_auth_rate_limit(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "rate_limit_auth_per_minute", 3)
     codes = [client.post("/api/v1/auth/forgot-password", json={"email": "x@example.com"}).status_code for _ in range(5)]
     assert codes[:3] == [200, 200, 200] and codes[-1] == 429
+
+
+def test_login_accepts_existing_account_with_reserved_tld(client, user_factory):
+    # Regression: strict email syntax on login locked out accounts created by the CLI.
+    user_factory(email="admin@projectfive.local", role="admin")
+    login(client, "admin@projectfive.local")
