@@ -102,7 +102,13 @@ class ProviderNotConfigured(ProviderError):
 
 
 class ProviderQuotaExceeded(ProviderError):
-    """The provider's daily/monthly request allowance is used up. Work is resumable: try again after the reset."""
+    """The provider's daily/monthly request allowance is used up. Work is resumable: try again after the reset.
+
+    ``partial`` carries any fixtures already fetched in the same call so callers can save them before stopping."""
+
+    def __init__(self, message: str = "", partial: list | None = None):
+        super().__init__(message)
+        self.partial = partial or []
 
 
 class ProviderPlanLimit(ProviderError):

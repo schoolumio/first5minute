@@ -104,7 +104,8 @@ def check_season(provider: FootballDataProvider, league_id: str, season: int) ->
     report["fixtures_in_season"] = len(fixtures)
     report["finished"] = len(finals)
     report["competition"] = fixtures[0].competition.name if fixtures else None
-    report["estimated_requests_to_download"] = 1 + -(-len(finals) // max(1, provider.events_batch_size))
+    report["requests_to_download_if_plan_allows_bulk"] = 1 + -(-len(finals) // 20)
+    report["requests_to_download_if_one_per_match"] = 1 + len(finals)      # free plans refuse bulk requests
     if not finals:
         report["verdict"] = "No finished fixtures returned for that league and season (check the ids/year)."
         return report

@@ -17,8 +17,11 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 
 from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.providers.football import base as b
 from app.providers.http import ProviderHttpClient
+
+log = get_logger(__name__)
 
 STATUS_MAP = {
     "TBD": b.SCHEDULED, "NS": b.SCHEDULED,
@@ -126,6 +129,7 @@ class ApiFootballProvider(b.FootballDataProvider):
                 per_minute=settings.api_football_requests_per_minute,
             )
         self.client = client
+        self._bulk_ok = True
 
     def _response(self, data: dict) -> list:
         errors = data.get("errors")
@@ -154,11 +158,29 @@ class ApiFootballProvider(b.FootballDataProvider):
         return parse_fixture(items[0], include_events=True)
 
     def fixtures_with_events(self, provider_fixture_ids: list[str]) -> list[b.NormalizedFixture]:
+        """Timelines for several fixtures. Uses the bulk ``ids`` request (20 per call) when the plan allows it; free plans refuse
+        that parameter, in which case this permanently falls back to one request per fixture (and reports the fallback once)."""
         out: list[b.NormalizedFixture] = []
-        for i in range(0, len(provider_fixture_ids), self.events_batch_size):
-            chunk = provider_fixture_ids[i:i + self.events_batch_size]
-            data = self.client.get("/fixtures", {"ids": "-".join(chunk)}, "fixtures_with_events_batch")
-            out.extend(parse_fixture(item, include_events=True) for item in self._response(data))
+        i = 0
+        while i < len(provider_fixture_ids):
+            if self._bulk_ok:
+                chunk = provider_fixture_ids[i:i + 20]
+                try:
+                    data = self.client.get("/fixtures", {"ids": "-".join(chunk)}, "fixtures_with_events_batch")
+                    out.extend(parse_fixture(item, include_events=True) for item in self._response(data))
+                    i += len(chunk)
+                    continue
+                except b.ProviderPlanLimit as exc:
+                    if "ids parameter" not in str(exc).lower():
+                        raise
+                    self._bulk_ok = False
+                    self.events_batch_size = 1
+                    log.warning("api_football_bulk_events_unavailable_falling_back_to_single_requests")
+            try:
+                out.append(self.fixture_with_events(provider_fixture_ids[i]))
+            except b.ProviderQuotaExceeded as exc:
+                raise b.ProviderQuotaExceeded(str(exc), partial=out) from exc
+            i += 1
         return out
 
     def fixtures_by_league_season(self, league_id: str, season: int) -> list[b.NormalizedFixture]:

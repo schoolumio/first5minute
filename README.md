@@ -166,7 +166,7 @@ MLflow 3 needs a database backend such as `sqlite:///mlflow.db` or a tracking se
 cd frontend && npm test && npm run typecheck && npm run build
 ```
 
-The backend suite (159 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
+The backend suite (162 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
 rules, Poisson calculations, ingestion/normalisation, provider adapters with mock payloads, retry and
 rate limiting, data-leakage guards, prediction immutability, settlement corrections, walk-forward
 backtesting, plan permissions, admin permissions and Paystack webhooks.

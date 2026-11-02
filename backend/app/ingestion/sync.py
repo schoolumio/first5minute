@@ -49,11 +49,6 @@ def league_scope(provider: FootballDataProvider) -> set[str] | None:
         "(FOOTBALL_ALLOW_ALL_LEAGUES=true syncs every competition worldwide: very high request volume.)")
 
 
-def _batches(items: list[str], size: int):
-    for i in range(0, len(items), max(1, size)):
-        yield items[i:i + size]
-
-
 def sync_days(db: Session, provider: FootballDataProvider, days: list[date], with_events_for_final: bool = True,
               league_ids: set[str] | None = None) -> IngestStats:
     """Ingest fixtures for each day (allowlisted leagues only) and fetch timelines for final fixtures in bulk.
@@ -84,11 +79,16 @@ def sync_days(db: Session, provider: FootballDataProvider, days: list[date], wit
             detailed: dict[str, NormalizedFixture] = {}
             if with_events_for_final:
                 need = [nf.provider_id for nf in kept if nf.status in FINAL_STATUSES or nf.status == "abandoned"]
-                for chunk in _batches(need, provider.events_batch_size):
+                pos = 0
+                while pos < len(need):
+                    size = max(1, provider.events_batch_size)       # re-read each time: a provider may fall back to 1
+                    chunk, pos = need[pos:pos + size], pos + size
                     try:
                         for d in provider.fixtures_with_events(chunk):
                             detailed[d.provider_id] = d
                     except ProviderQuotaExceeded as exc:
+                        for d in exc.partial:
+                            detailed[d.provider_id] = d
                         ing.stats.quota_exhausted = True
                         ing.stats.errors.append(str(exc))
                         break
@@ -190,6 +190,29 @@ def backfill_history(db: Session, provider: FootballDataProvider, days: int, chu
     return totals
 
 
+def _ingest_detail(db: Session, ing: Ingestor, d: NormalizedFixture, out: dict) -> None:
+    try:
+        with db.begin_nested():
+            ing.ingest_fixture(d)
+        out["timelines_fetched"] += 1
+    except (ProviderError, ValueError) as exc:
+        out["errors"].append(f"{d.provider_id}: {exc}")
+
+
+def _quota_message(db: Session, provider: FootballDataProvider, finals: list[str]) -> str:
+    missing = db.scalar(select(func.count(Fixture.id)).where(
+        Fixture.provider == provider.name, Fixture.provider_id.in_(finals or [""]), Fixture.timeline_status != "complete")) or 0
+    msg = "provider request limit reached - progress is saved; run the same command again after your quota resets (it resumes)."
+    try:
+        limit = (provider.health_check().get("requests") or {}).get("limit_day")
+    except ProviderError:
+        limit = None
+    if missing and limit:
+        per_day = max(1, int(limit) - 5)
+        msg += f" {missing} timelines still to download: about {-(-missing // per_day)} more daily run(s) at {limit} requests/day."
+    return msg
+
+
 def sync_league_season(db: Session, provider: FootballDataProvider, league_id: str, season: int, progress=None) -> dict:
     """Download one whole league-season: ONE request for the fixture list, then match timelines in bulk (20 per request).
 
@@ -212,30 +235,31 @@ def sync_league_season(db: Session, provider: FootballDataProvider, league_id: s
             except (ProviderError, ValueError) as exc:
                 out["errors"].append(f"{nf.provider_id}: {exc}")
         db.commit()
-        finals = [nf.provider_id for nf in fixtures if nf.status in FINAL_STATUSES or nf.status == "abandoned"]
+        ordered = sorted((nf for nf in fixtures if nf.status in FINAL_STATUSES or nf.status == "abandoned"), key=lambda n: n.kickoff_at)
+        finals = [nf.provider_id for nf in ordered]                 # oldest first: partial downloads are still usable chronologically
         out["finished"] = len(finals)
         done = set(db.scalars(select(Fixture.provider_id).where(
             Fixture.provider == provider.name, Fixture.provider_id.in_(finals or [""]), Fixture.timeline_status == "complete")))
         need = [i for i in finals if i not in done]
-        for chunk in _batches(need, provider.events_batch_size):
+        pos = 0
+        while pos < len(need):
+            size = max(1, provider.events_batch_size)               # becomes 1 if the plan refuses bulk requests
+            chunk, pos = need[pos:pos + size], pos + size
             try:
                 for d in provider.fixtures_with_events(chunk):
-                    try:
-                        with db.begin_nested():
-                            ing.ingest_fixture(d)
-                        out["timelines_fetched"] += 1
-                    except (ProviderError, ValueError) as exc:
-                        out["errors"].append(f"{d.provider_id}: {exc}")
+                    _ingest_detail(db, ing, d, out)
                 db.commit()
-            except ProviderQuotaExceeded:
-                out["stopped_reason"] = ("provider request limit reached - progress is saved; run the same command again after "
-                                         "your quota resets (it resumes where it stopped)")
+            except ProviderQuotaExceeded as exc:
+                for d in exc.partial:
+                    _ingest_detail(db, ing, d, out)
+                db.commit()
+                out["stopped_reason"] = _quota_message(db, provider, finals)
                 break
             except ProviderPlanLimit as exc:
                 out["stopped_reason"] = str(exc)
                 break
             except ProviderError as exc:
-                out["errors"].append(f"events batch {chunk[0]}...: {exc}")
+                out["errors"].append(f"events {chunk[0]}...: {exc}")
             if progress:
                 progress(out)
         out["timelines_missing"] = db.scalar(select(func.count(Fixture.id)).where(

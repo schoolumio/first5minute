@@ -194,8 +194,12 @@ def main(argv: list[str] | None = None) -> None:
             for season in args.season:
                 print(f"Downloading league {args.league}, season {season} ...")
 
-                def show(o):
-                    print(f"  timelines fetched: {o['timelines_fetched']} / {o['finished']} finished matches")
+                last = {"n": 0}
+
+                def show(o, last=last):
+                    if o["timelines_fetched"] - last["n"] >= 20:
+                        last["n"] = o["timelines_fetched"]
+                        print(f"  timelines downloaded this run: {o['timelines_fetched']} (of {o['finished']} finished matches)")
 
                 try:
                     out = sync_league_season(db, provider, args.league, season, progress=show)

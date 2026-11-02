@@ -210,7 +210,7 @@ Expected numbers come from a fresh seed; yours may differ by a few.
 
 ```bash
 cd backend && source .venv/bin/activate
-pytest                 # 159 tests, ~90 s, uses the projectfive_test database
+pytest                 # 162 tests, ~90 s, uses the projectfive_test database
 ruff check .
 ```
 
@@ -262,7 +262,10 @@ paid plans allow the current season and far more requests. You do not have to gu
    ```
    Look for `"verdict": "OK: ..."`, `timeline_reconciles_with_score: true`, and `estimated_requests_to_download`.
    *(Season = the year it starts: 2023 means 2023/24.)* If the message mentions your plan, try an older year (2022, 2021).
-5. **Download whole seasons (about 20 requests each; resumable - if the daily limit is hit, run the same command again later):**
+5. **Download whole seasons (resumable - if the daily limit is hit, run the same command again later).** Paid plans download a
+   season in about 20 requests (timelines are fetched 20 at a time). **Free plans refuse that bulk request**, so the app automatically
+   switches to one request per match (about 380 per season = roughly 4 days at 100 requests/day). It downloads matches oldest-first, saves
+   after every match and tells you how many daily runs remain; run the same command once a day until it reports `timelines_missing: 0`:
    ```bat
    python -m app.cli backfill-season --league 39 --season 2022 2023
    ```

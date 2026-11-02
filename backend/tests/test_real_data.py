@@ -370,7 +370,7 @@ def test_diagnostics_report_errors_instead_of_crashing_and_probe_a_season():
     s = SeasonFake()
     _season(s, n_finished=7, n_upcoming=1)
     rep = check_season(s, "mock-l1", 2023)
-    assert rep["fixtures_in_season"] == 8 and rep["finished"] == 7 and rep["estimated_requests_to_download"] == 1 + 3
+    assert rep["fixtures_in_season"] == 8 and rep["finished"] == 7 and rep["requests_to_download_if_plan_allows_bulk"] == 1 + 1 and rep["requests_to_download_if_one_per_match"] == 1 + 7
     assert rep["verdict"].startswith("OK")
     s.plan_limit_on_season = True
     assert "Request refused" in check_season(s, "mock-l1", 2026)["verdict"]
@@ -392,3 +392,83 @@ def test_backtest_job_accepts_a_historical_window(db):
     assert recent_only["MARKET_A"]["sample_size"] == 0                                       # nothing in the last 60 days
     hist = job_backtest(db, start=old - td(days=1), end=old + td(days=60))
     assert hist["MARKET_A"]["sample_size"] > 0 and hist["is_demo"] is False and len(hist["window"]) == 2
+
+
+# ================================================================== free plan: bulk `ids` refused -> one timeline per request
+def _dated(fid: int, day_offset: int) -> dict:
+    from tests.test_providers import APIF_FIXTURE
+
+    item = _item(fid)
+    d = datetime(2023, 8, 12, 14, tzinfo=UTC) + timedelta(days=day_offset)
+    item["fixture"] = {**APIF_FIXTURE["fixture"], "id": fid, "date": d.isoformat()}
+    return item
+
+
+class FreePlanApi:
+    """Mock API-Football on a free plan: list OK, bulk ids refused, single-fixture lookups until the daily limit."""
+
+    def __init__(self, n=8, singles_before_limit: int | None = None):
+        self.n, self.limit = n, singles_before_limit
+        self.single_ids: list[int] = []
+        self.bulk_refusals = 0
+        self.lists = 0
+
+    def handler(self, request):
+        p = request.url.params
+        if request.url.path.endswith("/status"):
+            return httpx.Response(200, json={"errors": [], "response": {"requests": {"current": 7, "limit_day": 100}}})
+        if "ids" in p:
+            self.bulk_refusals += 1
+            return httpx.Response(200, json={"errors": {"plan": "Free plans do not have access to the Ids parameter."}, "response": []})
+        if "id" in p:
+            if self.limit is not None and len(self.single_ids) >= self.limit:
+                return httpx.Response(200, json={"errors": {"requests": "You have reached the request limit for the day"}, "response": []})
+            self.single_ids.append(int(p["id"]))
+            return httpx.Response(200, json={"errors": [], "response": [_dated(int(p["id"]), int(p["id"]))]})
+        self.lists += 1
+        return httpx.Response(200, json={"errors": [], "response": [_dated(i, i) for i in range(self.n, 0, -1)]})   # newest first!
+
+    def provider(self):
+        return api_football.ApiFootballProvider(client=_client(self.handler))
+
+
+def test_free_plan_fallback_is_automatic_chronological_and_resumes_across_days(db):
+    api = FreePlanApi(n=8, singles_before_limit=5)
+    first = sync_league_season(db, api.provider(), "39", 2023)
+    assert api.bulk_refusals == 1 and api.lists == 1                                   # tried bulk once, then never again
+    assert api.single_ids == [1, 2, 3, 4, 5]                                           # oldest matches first despite newest-first listing
+    assert first["timelines_fetched"] == 5 and first["timelines_missing"] == 3
+    assert "run the same command again" in first["stopped_reason"]
+    assert "3 timelines still to download" in first["stopped_reason"] and "1 more daily run" in first["stopped_reason"]
+    assert db.scalar(select(SyncRun.status).where(SyncRun.job == "sync_season")) == "quota_hit"
+
+    # "tomorrow": a fresh process/provider, quota available again - only the missing three are requested
+    api.limit, api.single_ids = None, []
+    second = sync_league_season(db, api.provider(), "39", 2023)
+    assert api.single_ids == [6, 7, 8] and second["timelines_fetched"] == 3 and second["timelines_missing"] == 0
+    assert second["stopped_reason"] is None
+    api.single_ids.clear()
+    third = sync_league_season(db, api.provider(), "39", 2023)
+    assert api.single_ids == [] and third["timelines_fetched"] == 0                    # nothing left: no wasted requests
+    assert all(x.timeline_status == "complete" for x in db.scalars(select(Fixture)))
+
+
+def test_provider_fallback_state_and_partial_results_on_quota():
+    api = FreePlanApi(n=5, singles_before_limit=2)
+    prov = api.provider()
+    assert prov.events_batch_size == 20
+    with pytest.raises(ProviderQuotaExceeded) as e:
+        prov.fixtures_with_events([str(i) for i in range(1, 6)])
+    assert [x.provider_id for x in e.value.partial] == ["1", "2"]                       # work done before the limit is returned, not lost
+    assert prov.events_batch_size == 1 and prov._bulk_ok is False
+    api.limit = None
+    assert [x.provider_id for x in prov.fixtures_with_events(["3", "4"])] == ["3", "4"]
+    assert api.bulk_refusals == 1                                                       # never retried after the first refusal
+
+
+def test_other_plan_errors_are_not_mistaken_for_the_bulk_restriction():
+    other = {"errors": {"plan": "Free plans do not have access to this season, try from 2021 to 2023."}, "response": []}
+    prov = api_football.ApiFootballProvider(client=_client(lambda r: httpx.Response(200, json=other)))
+    with pytest.raises(ProviderPlanLimit):
+        prov.fixtures_with_events(["1", "2"])
+    assert prov._bulk_ok is True                                                        # no silent fallback for unrelated plan limits
