@@ -3,7 +3,64 @@
 Everything in steps 1-8 was executed from a clean clone (fresh virtualenv, empty database, `npm ci`) before this
 guide was written. You will run on **synthetic DEMO data** - no API keys, payments or email are needed.
 
-**You need two terminals** (A = backend, B = frontend). Windows users: use **WSL2 (Ubuntu)** and follow the Linux commands.
+**You need two terminals** (A = backend, B = frontend). Windows users: use section 0 (native) or WSL2 (Ubuntu, Linux commands).
+
+## 0. Windows (native Command Prompt) - use this instead of steps 1-6 below
+
+> Steps 1-8 were executed on Linux. This Windows section uses standard commands but has **not** been run on a Windows machine;
+> if something differs, report the exact error. Skip Redis, Celery and `sudo`/`apt` commands entirely (not needed, not for Windows).
+> In `cmd`, use **double quotes** (single quotes are not understood) and `copy` instead of `cp`.
+
+**Install (once)** - PostgreSQL 16 from https://www.postgresql.org/download/windows/ (remember the `postgres` password you choose; keep port 5432),
+Python 3.13 from https://www.python.org/downloads/ (tick "Add python.exe to PATH") and Node.js 22+ from https://nodejs.org/. Open a **new** terminal, then:
+
+```bat
+python --version
+node --version
+set PATH=%PATH%;C:\Program Files\PostgreSQL\16\bin
+psql --version
+```
+
+**Databases** (enter your `postgres` password when asked):
+
+```bat
+psql -U postgres -c "CREATE USER five WITH PASSWORD 'five' CREATEDB;"
+psql -U postgres -c "CREATE DATABASE projectfive OWNER five;"
+psql -U postgres -c "CREATE DATABASE projectfive_test OWNER five;"
+```
+
+**Config** (from the project folder, e.g. the unzipped `first5minute` folder):
+
+```bat
+copy .env.example .env
+```
+
+**Backend - Command Prompt A:**
+
+```bat
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements-dev.txt
+alembic upgrade head
+python -m app.cli create-admin --email admin@projectfive.local --password "AdminPass123"
+python -m app.cli seed-demo
+uvicorn app.main:app --reload --port 8000
+```
+
+**Frontend - Command Prompt B:**
+
+```bat
+cd frontend
+npm ci
+npm run dev
+```
+
+Then open http://localhost:3000 and continue with **step 7 (walkthrough)**. Tests: `pytest` and `ruff check .` in Command Prompt A (venv active),
+`npm test`, `npm run typecheck` in B. If PowerShell is your shell, `.venv\Scripts\Activate.ps1` activates the venv (you may first need
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`).
+
+---
 
 ## 1. Prerequisites
 
