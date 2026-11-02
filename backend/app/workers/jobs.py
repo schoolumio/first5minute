@@ -55,13 +55,29 @@ def job_train(db: Session, n_blocks: int = 6, auto_promote: bool = True) -> dict
     return out
 
 
+def job_odds(db: Session) -> dict:
+    """Poll the configured odds provider for upcoming fixtures (a no-op when none is configured)."""
+    from app.providers.odds.base import NullOddsProvider, get_odds_provider
+    from app.services.odds import sync_odds
+
+    provider = get_odds_provider(db)
+    if isinstance(provider, NullOddsProvider):
+        return {"skipped": "no odds provider configured (ODDS_PROVIDER=none)"}
+    stats = sync_odds(db, provider)
+    db.commit()
+    return stats.as_dict()
+
+
 def job_expire(db: Session) -> dict:
     n = expire_subscriptions(db)
     db.commit()
     return {"expired": n}
 
 
-JOBS = {"sync": job_sync, "scan": job_scan, "settle": job_settle, "backtest": job_backtest, "train": job_train, "expire": job_expire}
+JOBS = {
+    "sync": job_sync, "scan": job_scan, "settle": job_settle, "backtest": job_backtest,
+    "train": job_train, "odds": job_odds, "expire": job_expire,
+}
 
 
 def run_named(db: Session, name: str) -> dict:

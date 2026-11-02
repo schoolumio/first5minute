@@ -26,7 +26,7 @@ export interface Prediction {
   predicted_at: string; kickoff_at: string; input_data_version: string; is_current: boolean;
   model: { id: number; name: string; version: string; algorithm: string; calibration_status: string };
   outcome: Outcome | null; is_demo: boolean; fixture?: Fixture;
-  best_odds?: { decimal_odds: number; bookmaker: string; captured_at: string } | null; edge?: number | null;
+  best_odds?: { decimal_odds: number; bookmaker: string; captured_at: string; is_demo?: boolean; n_books?: number } | null; edge?: number | null;
 }
 export interface Page<T> { items: T[]; total: number; page: number; page_size: number; pages: number }
 export interface Entitlements { plan: string; plan_name: string; features: Record<string, boolean | number | null> }
@@ -56,4 +56,21 @@ export interface TeamProfile {
   first_goal_timing: { bucket: string; count: number }[] | null;
   recent_matches: { fixture_id: number; kickoff_at: string; is_home: boolean; opponent: string | null; goals_for: number;
     goals_against: number; early_for: number | null; early_against: number | null; first_goal_minute: number | null; reliable: boolean }[];
+}
+
+export interface OddsRow {
+  bookmaker: { id: number; code: string; name: string; is_demo: boolean }; market: Market; selection: string; decimal_odds: number;
+  implied_probability: number; fair_odds: number | null; edge: number | null; is_available: boolean; is_stale: boolean; age_minutes: number;
+  last_updated: string; checked_at: string; rule_mismatch: boolean; rule_note: string | null; can_open: boolean; is_demo: boolean;
+}
+export interface LimitStatus {
+  daily: { limit: number | null; used: number; reached: boolean }; monthly: { limit: number | null; used: number; reached: boolean };
+  self_excluded: boolean; self_excluded_until: string | null; reality_check_minutes: number | null;
+}
+export interface FixtureOdds {
+  fixture_id: number; kickoff_at: string; odds_provider: string; provider_configured: boolean; max_age_minutes: number; odds: OddsRow[];
+  markets: Partial<Record<Market, { probability: number; category: Category; fair_odds: number | null; edge: number | null;
+    best: { decimal_odds: number; bookmaker: string; bookmaker_code: string; captured_at: string; is_demo: boolean; n_books: number } | null }>>;
+  best_history: Partial<Record<Market, { t: string; best: number | null }[]>>;
+  responsible_gambling: LimitStatus; self_excluded: boolean; message: string | null; notice: string;
 }

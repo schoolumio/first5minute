@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { use, useState } from "react";
-import { ArrowLeft, Bookmark, ExternalLink, Info } from "lucide-react";
+import { ArrowLeft, Bookmark, Info } from "lucide-react";
 import { ComparisonChart, SERIES, TimingChart } from "@/components/charts/charts";
+import { OddsPanel } from "@/components/match/odds-panel";
 import { OutcomeBadge } from "@/components/match/prediction-row";
 import { Badge, CategoryBadge, DemoBadge, QualityIndicator } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,11 +27,6 @@ interface Analysis {
   predictions: Partial<Record<Market, Prediction>>;
   prediction_history: Prediction[];
 }
-interface OddsRes {
-  odds: { bookmaker: { name: string; code: string }; market: Market; selection: string; decimal_odds: number; implied_probability: number; is_available: boolean; last_updated: string; link: string | null }[];
-  message: string | null; notice: string; self_excluded: boolean;
-}
-
 function PredictionPanel({ p, market }: { p?: Prediction; market: Market }) {
   if (!p) return <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5"><p className="text-sm text-muted">No {MARKET_LABEL[market]} prediction yet.</p></div>;
   const levels = (p.components.level_scores ?? null) as Record<string, number> | null;
@@ -116,34 +112,6 @@ function WindowRow({ label, w }: { label: string; w?: Window }) {
   );
 }
 
-function OddsPanel({ fixtureId }: { fixtureId: number }) {
-  const { data, loading, error } = useApi<OddsRes>(`/odds/${fixtureId}`);
-  if (loading) return <Skeleton className="h-24" />;
-  if (error) return <Alert tone="danger">{error.message}</Alert>;
-  if (!data?.odds.length) return <EmptyState title="No odds available">{data?.message}</EmptyState>;
-  return (
-    <>
-      {data.self_excluded && <Alert tone="warn" className="mb-3">Sportsbook links are hidden while you are self-excluded.</Alert>}
-      <Table>
-        <thead><tr><Th>Sportsbook</Th><Th>Market</Th><Th className="text-right">Odds</Th><Th className="text-right">Implied</Th><Th>Updated</Th><Th /></tr></thead>
-        <tbody>
-          {data.odds.map((o) => (
-            <tr key={o.bookmaker.code + o.market}>
-              <Td className="font-medium">{o.bookmaker.name}</Td>
-              <Td className="text-muted">{MARKET_LABEL[o.market]}</Td>
-              <Td className="tabular text-right font-semibold">{o.decimal_odds.toFixed(2)}</Td>
-              <Td className="tabular text-right text-muted">{pct(o.implied_probability)}</Td>
-              <Td className="text-xs text-muted">{new Date(o.last_updated).toLocaleString()}</Td>
-              <Td>{o.link && o.is_available ? <a href={o.link} target="_blank" rel="noopener noreferrer sponsored" className="inline-flex items-center gap-1 text-xs text-brand-400 hover:underline">Open <ExternalLink className="h-3 w-3" /></a> : <span className="text-xs text-subtle">unavailable</span>}</Td>
-            </tr>
-          ))}
-        </tbody>
-      </Table>
-      <p className="mt-3 text-xs text-subtle">{data.notice}</p>
-    </>
-  );
-}
-
 export default function MatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data, loading, error } = useApi<Analysis>(`/fixtures/${id}/analysis`);
@@ -188,6 +156,11 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
         <PredictionPanel p={data.predictions.MARKET_A} market="MARKET_A" />
         <PredictionPanel p={data.predictions.MARKET_B} market="MARKET_B" />
       </div>
+
+      <Card className="mt-6">
+            <CardHeader title="Odds comparison" description="Only odds recorded from configured providers are shown" />
+            <CardBody>{has("odds_comparison") ? <OddsPanel fixtureId={fx.id} /> : <UpgradeNotice feature="Odds comparison" />}</CardBody>
+          </Card>
 
       <Card className="mt-6">
         <CardHeader title="Opening-minute profile" description="Share of each team's matches - goals measured at the five-minute cutoff"
@@ -259,10 +232,6 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
                 </Table>
               ) : <p className="text-sm text-muted">No previous meetings recorded.</p>}
             </CardBody>
-          </Card>
-          <Card>
-            <CardHeader title="Odds comparison" description="Only odds recorded from configured providers are shown" />
-            <CardBody>{has("odds_comparison") ? <OddsPanel fixtureId={fx.id} /> : <UpgradeNotice feature="Odds comparison" />}</CardBody>
           </Card>
           {data.prediction_history.length > 2 && (
             <Card>

@@ -155,6 +155,9 @@ function Saved() {
 interface Bet { id: number; fixture: Fixture; market: "MARKET_A" | "MARKET_B"; decimal_odds: number; stake: number | null; currency: string; bet_reference: string | null; placed_at: string; settlement_status: string }
 
 function Bets() {
+  const params = useSearchParams();
+  const pre = { fixture: Number(params.get("fixture")) || null, market: params.get("market") ?? "MARKET_A", odds: params.get("odds") ?? "", bookmaker: Number(params.get("bookmaker")) || null };
+  const prefFixture = useApi<Fixture>(pre.fixture ? `/fixtures/${pre.fixture}` : null);
   const { data, loading, reload } = useApi<{ items: Bet[]; summary: { total_staked: number; total_returned: number; profit: number } }>("/bets", { page_size: 50 });
   const saved = useApi<{ id: number; fixture: Fixture }[]>("/saved-matches");
   const s = useSaver();
@@ -165,7 +168,7 @@ function Bets() {
     const form = e.currentTarget;
     s.run(async () => {
       const res = await api<{ warnings: string[] }>("/bets", { method: "POST", body: {
-        fixture_id: Number(f.get("fixture_id")), market: f.get("market"), decimal_odds: Number(f.get("odds")),
+        fixture_id: Number(f.get("fixture_id")), market: f.get("market"), decimal_odds: Number(f.get("odds")), bookmaker_id: pre.bookmaker,
         stake: f.get("stake") ? Number(f.get("stake")) : null, bet_reference: f.get("reference") || null, confirm: f.get("confirm") === "on" } });
       setWarnings(res.warnings);
       form.reset();
@@ -186,11 +189,14 @@ function Bets() {
         <CardBody>
           {s.msg && <Alert tone={s.msg.tone} className="mb-3">{s.msg.text}</Alert>}
           {warnings.map((w) => <Alert key={w} tone="warn" className="mb-3" title="Limit reached">{w} Consider taking a break.</Alert>)}
-          {!saved.data?.length ? <p className="text-sm text-muted">Save a match from the scanner first, then record your bet here.</p> : (
+          {pre.fixture && <Alert tone="info" className="mb-3">Prefilled from the sportsbook link you opened. Check the odds and enter your stake only if you placed the bet.</Alert>}
+          {!saved.data?.length && !prefFixture.data ? <p className="text-sm text-muted">Save a match from the scanner first, then record your bet here.</p> : (
             <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <Field label="Match" className="lg:col-span-2"><Select name="fixture_id" required>{saved.data.map((sm) => <option key={sm.id} value={sm.fixture.id}>{sm.fixture.home_team.name} vs {sm.fixture.away_team.name}</option>)}</Select></Field>
-              <Field label="Market"><Select name="market"><option value="MARKET_A">{MARKET_LABEL.MARKET_A}</option><option value="MARKET_B">{MARKET_LABEL.MARKET_B}</option></Select></Field>
-              <Field label="Decimal odds"><Input name="odds" type="number" step="0.01" min="1.01" required /></Field>
+              <Field label="Match" className="lg:col-span-2"><Select name="fixture_id" required defaultValue={pre.fixture ?? undefined}>
+                {prefFixture.data && !saved.data?.some((sm) => sm.fixture.id === prefFixture.data!.id) && <option value={prefFixture.data.id}>{prefFixture.data.home_team.name} vs {prefFixture.data.away_team.name}</option>}
+                {saved.data?.map((sm) => <option key={sm.id} value={sm.fixture.id}>{sm.fixture.home_team.name} vs {sm.fixture.away_team.name}</option>)}</Select></Field>
+              <Field label="Market"><Select name="market" defaultValue={pre.market}><option value="MARKET_A">{MARKET_LABEL.MARKET_A}</option><option value="MARKET_B">{MARKET_LABEL.MARKET_B}</option></Select></Field>
+              <Field label="Decimal odds"><Input name="odds" type="number" step="0.01" min="1.01" required defaultValue={pre.odds} /></Field>
               <Field label="Stake (optional)"><Input name="stake" type="number" step="0.01" min="0" /></Field>
               <Field label="Bet reference (optional)" className="lg:col-span-2"><Input name="reference" maxLength={128} /></Field>
               <Checkbox name="confirm" required className="lg:col-span-2 self-end" label="I placed this bet myself with the sportsbook." />
@@ -292,7 +298,8 @@ function Security() {
 
 function AccountInner() {
   const params = useSearchParams();
-  const [tab, setTab] = useState<Tab>(params.get("reference") ? "billing" : "profile");
+  const initial = params.get("tab");
+  const [tab, setTab] = useState<Tab>(params.get("reference") ? "billing" : (["profile", "billing", "saved", "bets", "safer", "security"] as string[]).includes(initial ?? "") ? (initial as Tab) : "profile");
   return (
     <>
       <PageHeader title="Account" description="Profile, subscription, saved matches and safer-gambling controls." />

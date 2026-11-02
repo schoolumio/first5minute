@@ -14,31 +14,33 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.engine import metrics
 from app.engine.predictor import analyse_fixture
 from app.engine.settlement import Market, Result, settle
 from app.ingestion.service import Ingestor
-from app.models import BettingMarket, Fixture, MatchEvent, ModelMetric, ModelVersion, OddsSnapshot
+from app.models import BettingMarket, Bookmaker, Fixture, MatchEvent, ModelMetric, ModelVersion, OddsSnapshot
 from app.services.settings import default_rule_row, get_setting, rule_from_row
 
 
-def _best_pre_kickoff_odds(db: Session, fixture: Fixture, market_code: str) -> float | None:
-    row = db.scalar(
-        select(OddsSnapshot.decimal_odds)
+def _best_pre_kickoff_odds(db: Session, fixture: Fixture, market_code: str, default_rule_id: int | None = None) -> float | None:
+    """Best price a bettor could have taken at kick-off: each bookmaker's LAST available pre-kickoff price, best across
+    bookmakers. Demo odds, inactive bookmakers and bookmakers settling by a different rule are never used."""
+    rows = db.execute(
+        select(OddsSnapshot.bookmaker_id, OddsSnapshot.selection, OddsSnapshot.decimal_odds, OddsSnapshot.is_available)
         .join(BettingMarket, BettingMarket.id == OddsSnapshot.market_id)
-        .where(
-            OddsSnapshot.fixture_id == fixture.id,
-            BettingMarket.code == market_code,
-            OddsSnapshot.captured_at < fixture.kickoff_at,
-            OddsSnapshot.is_available.is_(True),
-        )
-        .order_by(OddsSnapshot.decimal_odds.desc())
-        .limit(1)
-    )
-    return float(row) if row is not None else None
+        .join(Bookmaker, Bookmaker.id == OddsSnapshot.bookmaker_id)
+        .where(OddsSnapshot.fixture_id == fixture.id, BettingMarket.code == market_code, OddsSnapshot.captured_at < fixture.kickoff_at,
+               OddsSnapshot.is_demo.is_(False), Bookmaker.is_active.is_(True), Bookmaker.is_demo.is_(False),
+               or_(Bookmaker.settlement_rule_id.is_(None), Bookmaker.settlement_rule_id == default_rule_id))
+        .order_by(OddsSnapshot.captured_at.desc(), OddsSnapshot.id.desc())).all()
+    last: dict[tuple[int, str], tuple[float, bool]] = {}
+    for bm_id, sel, odds, ok in rows:
+        last.setdefault((bm_id, sel), (float(odds), ok))
+    live = [o for o, ok in last.values() if ok]
+    return max(live) if live else None
 
 
 def walk_forward(
@@ -50,7 +52,8 @@ def walk_forward(
 ) -> dict:
     params = get_setting(db, "model.baseline")
     thresholds = get_setting(db, "scanner.thresholds")
-    rule = rule_from_row(default_rule_row(db))
+    rule_row = default_rule_row(db)
+    rule = rule_from_row(rule_row)
     fixtures = db.scalars(
         select(Fixture)
         .where(Fixture.status == "finished", Fixture.kickoff_at >= start, Fixture.kickoff_at < end)
@@ -73,7 +76,7 @@ def walk_forward(
             if result not in (Result.WON, Result.LOST):
                 skipped[f"unsettled_{market.value}"] += 1
                 continue
-            odds = _best_pre_kickoff_odds(db, fx, market.value)
+            odds = _best_pre_kickoff_odds(db, fx, market.value, rule_row.id)
             data[market.value].append((fold, analysis.probability(market), int(result is Result.WON), odds))
 
     report: dict = {"window": [start.isoformat(), end.isoformat()], "skipped": dict(skipped), "is_demo": any_demo}

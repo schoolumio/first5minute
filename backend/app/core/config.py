@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     sportmonks_requests_per_minute: int = 50
 
     # --- Odds --------------------------------------------------------------
-    odds_provider: Literal["none", "api_football"] = "none"
+    odds_provider: Literal["none", "api_football", "demo"] = "none"
 
     # --- Machine learning ---------------------------------------------------
     model_dir: str = "./model_store"          # joblib artifacts of trained models

@@ -26,6 +26,12 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "high": {"min_finished": 100, "min_coverage": 0.95},
         "medium": {"min_finished": 40, "min_coverage": 0.80},
     },
+    "odds.settings": {
+        "max_age_minutes": 180,        # odds older than this are shown as stale and never used for edge / best price
+        "max_fixtures_per_run": 100,   # provider request budget per sync run (nearest kick-offs first)
+        "lookahead_hours": 48,
+        "heartbeat_minutes": 60,       # re-record unchanged odds this often to prove they are still live
+    },
     "model.baseline": {
         "prior_strength": 8.0,
         "max_history": 20,

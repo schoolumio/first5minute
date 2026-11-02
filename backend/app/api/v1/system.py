@@ -22,7 +22,7 @@ def system_status(db: Session = Depends(get_db)) -> dict:
     except Exception:  # pragma: no cover
         db_ok = False
     last = {}
-    for job in ("sync_fixtures", "scanner", "settlement"):
+    for job in ("sync_fixtures", "scanner", "settlement", "odds_sync"):
         run = db.scalar(select(SyncRun).where(SyncRun.job == job).order_by(SyncRun.started_at.desc()).limit(1))
         last[job] = {"status": run.status, "at": (run.finished_at or run.started_at).isoformat()} if run else None
     return {

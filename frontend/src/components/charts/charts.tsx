@@ -13,6 +13,7 @@ import {
   CartesianGrid,
   Legend,
   Line,
+  ReferenceLine,
   ComposedChart,
   ResponsiveContainer,
   Scatter,
@@ -147,6 +148,25 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
         <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} iconType="plainline" />
         <Line name="Model estimate" dataKey="mean_predicted" stroke={SERIES.home} strokeWidth={2} dot={{ r: 4, fill: SERIES.home, stroke: "#0b1424", strokeWidth: 2 }} isAnimationActive={false} />
         <Line name="Observed hit rate" dataKey="hit_rate" stroke={SERIES.away} strokeWidth={2} dot={{ r: 4, fill: SERIES.away, stroke: "#0b1424", strokeWidth: 2 }} isAnimationActive={false} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Best available decimal odds over time vs the model's fair odds (1 / probability). Edge exists only where the line is above the dashed one. */
+export function OddsHistoryChart({ points, fair }: { points: { t: string; best: number | null }[]; fair: number | null }) {
+  const data = points.map((p) => ({ ...p, label: new Date(p.t).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) }));
+  const vals = [...points.map((p) => p.best).filter((v): v is number => v !== null), ...(fair ? [fair] : [])];
+  const lo = Math.max(1, Math.floor((Math.min(...vals) - 0.02) * 50) / 50), hi = Math.ceil((Math.max(...vals) + 0.02) * 50) / 50;
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <ComposedChart data={data} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+        <CartesianGrid {...GRID} />
+        <XAxis dataKey="label" {...AXIS} minTickGap={48} />
+        <YAxis {...AXIS} domain={[lo, hi]} tickFormatter={(v) => v.toFixed(2)} />
+        <Tooltip cursor={{ stroke: "#2a3d5c" }} content={<TooltipBox fmt={(v) => v.toFixed(2)} />} />
+        {fair && <ReferenceLine y={fair} stroke="#94a3b8" strokeDasharray="5 4" label={{ value: `Model fair odds ${fair.toFixed(2)}`, fill: "#94a3b8", fontSize: 11, position: "insideTopRight" }} />}
+        <Line name="Best available odds" dataKey="best" type="stepAfter" stroke={SERIES.away} strokeWidth={2} dot={{ r: 3, fill: SERIES.away, stroke: "#0b1424", strokeWidth: 2 }} isAnimationActive={false} connectNulls />
       </ComposedChart>
     </ResponsiveContainer>
   );

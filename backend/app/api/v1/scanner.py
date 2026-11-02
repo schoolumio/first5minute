@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session, aliased
 
 from app.api.deps import get_current_user, require_verified
 from app.core.database import get_db, utcnow
-from app.models import BettingMarket, Competition, Fixture, OddsSnapshot, Prediction, Team, User
+from app.models import Competition, Fixture, Prediction, Team, User
 from app.schemas.common import prediction_out
+from app.services import odds as odds_svc
 from app.services.entitlements import entitlements
 from app.services.settings import get_setting
 
@@ -41,27 +42,6 @@ class ScannerFilters(BaseModel):
 
 
 ADVANCED = ("min_sample", "min_data_quality", "team", "country", "competition_type")
-
-
-def _latest_best_odds(db: Session, fixture_ids: list[int]) -> dict[tuple[int, str], dict]:
-    if not fixture_ids:
-        return {}
-    rows = db.execute(
-        select(OddsSnapshot, BettingMarket.code)
-        .join(BettingMarket, BettingMarket.id == OddsSnapshot.market_id)
-        .where(OddsSnapshot.fixture_id.in_(fixture_ids), OddsSnapshot.is_available.is_(True))
-        .order_by(OddsSnapshot.captured_at.desc())
-    ).all()
-    latest: dict[tuple[int, str, int], OddsSnapshot] = {}
-    for snap, code in rows:
-        latest.setdefault((snap.fixture_id, code, snap.bookmaker_id), snap)
-    best: dict[tuple[int, str], dict] = {}
-    for (fid, code, _), snap in latest.items():
-        cur = best.get((fid, code))
-        if cur is None or float(snap.decimal_odds) > cur["decimal_odds"]:
-            best[(fid, code)] = {"decimal_odds": float(snap.decimal_odds), "bookmaker": snap.bookmaker.name,
-                                 "captured_at": snap.captured_at.isoformat()}
-    return best
 
 
 def run_scanner(db: Session, user: User, f: ScannerFilters) -> dict:
@@ -126,7 +106,7 @@ def run_scanner(db: Session, user: User, f: ScannerFilters) -> dict:
         locked = max(0, total - limit)
         preds = preds[:limit]
 
-    odds = _latest_best_odds(db, list({p.fixture_id for p in preds})) if feats.get("odds_comparison") else {}
+    odds = odds_svc.best_fresh(db, list({p.fixture_id for p in preds}), user.country, now) if feats.get("odds_comparison") else {}
     items = []
     for p in preds:
         item = prediction_out(p)

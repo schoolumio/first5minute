@@ -50,6 +50,7 @@ def reset_demo(db) -> None:
         db.execute(text(f"DELETE FROM {table} WHERE fixture_id IN (SELECT id FROM fixtures WHERE is_demo)"))  # noqa: S608 - constant table names
     db.execute(text("DELETE FROM team_match_stats WHERE fixture_id IN (SELECT id FROM fixtures WHERE is_demo)"))
     db.execute(text("DELETE FROM fixtures WHERE is_demo"))
+    db.execute(text("DELETE FROM bookmakers WHERE is_demo"))
     db.execute(text("DELETE FROM seasons WHERE competition_id IN (SELECT id FROM competitions WHERE is_demo)"))
     db.execute(text("DELETE FROM competitions WHERE is_demo"))
     db.execute(text("DELETE FROM teams WHERE is_demo"))
@@ -97,7 +98,12 @@ def seed_demo(reset: bool, replay_days: int) -> dict:
         settled = settle_predictions(db)
         db.commit()
         bt = job_backtest(db, days=60)
-        return {"anchor": anchor.isoformat(), "ingest": stats.as_dict() | {"errors": stats.errors[:5]},
+        odds = None
+        if get_settings().odds_provider == "demo":
+            from app.workers.jobs import job_odds
+
+            odds = job_odds(db)
+        return {"odds": odds, "anchor": anchor.isoformat(), "ingest": stats.as_dict() | {"errors": stats.errors[:5]},
                 "replay_scans": scans, "settled": settled, "backtest": bt}
 
 
@@ -112,7 +118,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--reset", action="store_true")
     s.add_argument("--replay-days", type=int, default=14)
     sub.add_parser("reset-demo")
-    for job in ("sync", "scan", "settle", "backtest", "expire"):
+    for job in ("sync", "scan", "settle", "backtest", "odds", "expire"):
         sub.add_parser(job)
     b = sub.add_parser("backfill", help="pull past fixtures + event timelines from the configured provider (resumable)")
     b.add_argument("--days", type=int, default=90)
@@ -120,6 +126,8 @@ def main(argv: list[str] | None = None) -> None:
     t = sub.add_parser("train", help="train & walk-forward evaluate ML models (promotes only if all gates pass)")
     t.add_argument("--blocks", type=int, default=6)
     t.add_argument("--no-promote", action="store_true")
+    oi = sub.add_parser("odds-import", help="import odds from an authorised source: JSON file {\"rows\": [...]}")
+    oi.add_argument("file")
     r = sub.add_parser("rollback-model", help="reactivate the Poisson baseline for a market")
     r.add_argument("--market", choices=["MARKET_A", "MARKET_B"], required=True)
     args = parser.parse_args(argv)
@@ -148,6 +156,17 @@ def main(argv: list[str] | None = None) -> None:
 
         with SessionLocal() as db:
             print(json.dumps(job_train(db, args.blocks, not args.no_promote), indent=2, default=str))
+    elif args.cmd == "odds-import":
+        from pathlib import Path
+
+        from app.api.v1.admin import OddsImportIn
+        from app.services.odds import import_odds
+
+        payload = OddsImportIn.model_validate_json(Path(args.file).read_text(encoding="utf-8"))
+        with SessionLocal() as db:
+            result = import_odds(db, [r.model_dump() for r in payload.rows])
+            db.commit()
+        print(json.dumps(result, indent=2, default=str))
     elif args.cmd == "rollback-model":
         from app.engine.ml.training import rollback_to_baseline
 

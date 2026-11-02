@@ -72,6 +72,10 @@ class Bookmaker(TimestampMixin, Base):
     settlement_rule_id: Mapped[int | None] = mapped_column(ForeignKey("settlement_rules.id", ondelete="SET NULL"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     supports_execution_api: Mapped[bool] = mapped_column(Boolean, default=False)
+    # manual (admin-created) | provider (discovered from an odds feed, inactive until reviewed) | demo
+    source: Mapped[str] = mapped_column(String(16), default="manual", server_default="manual")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class OddsSnapshot(Base):
@@ -91,6 +95,7 @@ class OddsSnapshot(Base):
     decimal_odds: Mapped[Decimal] = mapped_column(Numeric(8, 3))
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
     source_provider: Mapped[str] = mapped_column(String(32))
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     event_ref: Mapped[str | None] = mapped_column(String(128))
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     provider_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

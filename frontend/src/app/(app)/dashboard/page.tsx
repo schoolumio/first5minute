@@ -166,8 +166,8 @@ export default function DashboardPage() {
                 );
               })}
               <p className="flex items-center justify-between">
-                <span className="text-muted">Odds provider</span>
-                <span className="text-xs text-subtle">{status?.odds_provider === "none" ? "not configured" : status?.odds_provider}</span>
+                <span className="text-muted">Odds ({status?.odds_provider === "none" ? "not configured" : status?.odds_provider})</span>
+                <span className="text-xs">{status?.last_runs?.odds_sync ? <><Badge tone={status.last_runs.odds_sync.status === "success" ? "brand" : "warn"}>{status.last_runs.odds_sync.status}</Badge> <span className="ml-1 text-subtle">{relative(status.last_runs.odds_sync.at)}</span></> : <span className="text-subtle">never</span>}</span>
               </p>
             </CardBody>
           </Card>

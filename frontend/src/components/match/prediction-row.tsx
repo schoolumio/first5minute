@@ -59,7 +59,7 @@ export function PredictionCard({ p, threshold, saved: initialSaved = false }: { 
           <CategoryBadge category={p.category} />
           {p.best_odds && (
             <span className="text-xs text-muted">
-              Best odds <span className="tabular font-semibold text-fg">{p.best_odds.decimal_odds.toFixed(2)}</span>
+              Best odds <span className="tabular font-semibold text-fg">{p.best_odds.decimal_odds.toFixed(2)}</span>{p.best_odds.is_demo && <span className="ml-1 text-demo">(demo)</span>}
             </span>
           )}
         </div>

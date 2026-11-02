@@ -114,6 +114,31 @@ Confidence labels still derive from the baseline's posterior uncertainty (approx
 significantly and the base-rate reference scores best, so nothing is promoted. That is the gates working;
 real conclusions require real, much larger histories.
 
+## 3c. Odds and assisted sportsbook links (Phase 5)
+
+* **Sources**: `OddsProvider` adapters (`api_football`, `demo`, none) plus admin import for odds from a licensed export. Odds are
+  append-only `odds_snapshots`; nothing is ever estimated or filled in. The **demo** provider only runs for demo fixtures, derives prices from the
+  model's own probability plus a margin (so no value by construction), flags every row `is_demo`, and is excluded from ROI backtests.
+* **Sync** (`services/odds.py`, Celery every 10 min): per upcoming fixture, within a request budget (nearest kick-offs first); unchanged prices are
+  not re-stored except a heartbeat (default 60 min) proving they are live; a non-empty response that omits a previously available price records it
+  as unavailable; an empty response is ignored (could be an outage); invalid prices (<=1 or >1000) are skipped; provider errors are collected.
+* **Approval and eligibility**: bookmakers discovered in a feed are created **inactive**. Users only see odds from active bookmakers permitted in
+  their country (`countries`; empty = all; a restricted bookmaker is hidden from users with no country). Each bookmaker can carry its own settlement
+  rule; if it differs from the model's default rule the UI warns that the estimate may not apply exactly.
+* **Freshness**: prices older than `max_age_minutes` (default 180) are shown as stale and never used for best price, edge or links.
+* **Edge** = model probability x decimal odds - 1; fair odds = 1 / probability. These are statistical estimates (uncalibrated unless the model says
+  otherwise) and are shown with that caveat; they are not advice.
+* **Link-out** (`POST /odds/{fixture}/open`): requires Pro, verified email, an unstarted match, a fresh available price, no self-exclusion, an
+  approved bookmaker allowed in the user's country, and an administrator-approved **https** template (no credentials, only `{event_ref}`, never in the
+  host; the event reference is URL-quoted). If a user-set stake limit is reached the user must explicitly acknowledge. Every open is audit-logged and
+  the response carries a bet prefill for voluntary bet tracking. The browser shows a responsible-gambling dialog first and opens the link with
+  `noopener`.
+* **No execution**: First5Minute never places bets. `get_execution_adapter()` always raises `ExecutionNotEnabled`, `supports_execution_api` cannot
+  be set through the API, and a test asserts the OpenAPI schema contains no bet-placing route. A future adapter must be registered in that one place,
+  require a fresh per-bet confirmation token, use operator OAuth (never passwords) and respect user limits.
+* **ROI integrity**: backtests use, per fixture, each real, active, rule-compatible bookmaker's *last available pre-kick-off price* (not the best
+  price ever seen), best across bookmakers; demo odds are never used.
+
 ## 4. Phase status
 
 | Phase | Status | Notes |
@@ -122,7 +147,7 @@ real conclusions require real, much larger histories.
 | 2. Provider integrations & historical DB | **Done (adapters), pending live verification** | API-Football & Sportmonks adapters built from documentation and tested with mock payloads; **not yet verified against live APIs** (no keys available). Historical backfill command per competition still to add. |
 | 3. Statistical engine & backtesting | **Done** | Baseline Poisson A/B plus logistic regression, LightGBM, empirical-Bayes hierarchical Poisson, equal-weight ensemble, Platt/isotonic calibration, walk-forward evaluation with paired-bootstrap significance, promotion gates, model registry/activation/rollback and optional MLflow tracking (see section 3b). Full MCMC Bayesian hierarchical models (PyMC/Stan) are not implemented. |
 | 4. Scanner & dashboard | **Done** | Scanner API + UI with filters/sorting, dashboard, match details with charts, prediction history & performance; automatic competition eligibility (coverage tiers, EXCLUDED with reason, admin override); email digests and settlement alerts; weekly performance trend; resumable history backfill. Step-by-step local testing: `docs/LOCAL_TESTING.md`. Not yet done: push/SMS channels, live (in-play) status in the scanner. |
-| 5. Odds & assisted links | **Partial** | Odds abstraction, API-Football odds mapping (conservative), bookmaker admin, deep-link templates, execution-adapter interface. Needs an odds source that actually prices five-minute markets. |
+| 5. Odds & assisted links | **Done (feature-complete, no live odds source verified)** | Odds sync (dedupe, withdrawal detection, heartbeat, staleness), admin bookmaker review/approval with countries, link templates and per-bookmaker settlement rule, comparison board and per-match panel (fair odds, estimated edge, history chart), guarded sportsbook link-out with responsible-gambling dialog and bet prefill, admin odds import, labelled demo odds, execution adapter intentionally disabled (section 3c). **Still needed:** a real odds source that prices five-minute markets (API-Football mapping is unverified against live data), and authorised referral agreements. |
 | 6. Subscriptions, users, notifications | **Mostly done** | Plans, Paystack checkout/verify/webhook, cancel/expiry, invoices, in-app notifications. Email/push delivery of notifications and Paystack recurring authorisation (auto-renew charge) remain. |
 | 7. Admin, security, testing | **Mostly done** | Admin API + UI (users, plans, competitions, providers, jobs, thresholds, rules, models, bookmakers, audit). Remaining: Elite API keys & per-key quotas, 24h cooling-off when raising RG limits. |
 | 8. Deployment & monitoring | **Scaffolded** | Dockerfiles, Compose, CI, Sentry hook, JSON logs. Docker images were not built in the development sandbox; cloud deployment not performed. |

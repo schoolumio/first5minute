@@ -123,7 +123,7 @@ All variables are documented in [`.env.example`](.env.example). The important on
 | `DATABASE_URL`, `REDIS_URL` | PostgreSQL and Redis connections |
 | `FOOTBALL_PROVIDER` | `demo`, `api_football` or `sportmonks` |
 | `API_FOOTBALL_KEY` / `SPORTMONKS_TOKEN` | provider credentials (server-side only) |
-| `ODDS_PROVIDER` | `none` or `api_football` |
+| `ODDS_PROVIDER` | `none`, `api_football` or `demo` (synthetic, labelled - local testing only) |
 | `PAYMENT_PROVIDER`, `PAYSTACK_SECRET_KEY` | enable Paystack checkout and webhooks |
 | `EMAIL_BACKEND` | `console` (dev - links appear in the API log) or `smtp` |
 | `COOKIE_SECURE` | `true` behind HTTPS (required in production) |
@@ -164,7 +164,7 @@ MLflow 3 needs a database backend such as `sqlite:///mlflow.db` or a tracking se
 cd frontend && npm test && npm run typecheck && npm run build
 ```
 
-The backend suite (110 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
+The backend suite (137 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
 rules, Poisson calculations, ingestion/normalisation, provider adapters with mock payloads, retry and
 rate limiting, data-leakage guards, prediction immutability, settlement corrections, walk-forward
 backtesting, plan permissions, admin permissions and Paystack webhooks.

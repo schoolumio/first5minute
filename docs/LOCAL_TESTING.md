@@ -127,7 +127,8 @@ psql postgresql://five:five@localhost:5432/projectfive -tc "select 1"
 cp .env.example .env
 ```
 
-No edits needed for local testing (demo provider, console email, dev secret). The backend reads the repo-root `.env`
+For the odds walkthrough (step 7.12) open `.env` and change `ODDS_PROVIDER=none` to `ODDS_PROVIDER=demo` **before** `seed-demo`
+(already seeded? change it, restart the API, then run `python -m app.cli odds`). Everything else needs no edits (demo football data, console email, dev secret). The backend reads the repo-root `.env`
 (a `backend/.env`, if you create one, overrides it).
 
 ## 5. Backend (Terminal A)
@@ -192,12 +193,24 @@ Expected numbers come from a fresh seed; yours may differ by a few.
    (warning appears). Self-exclude for 1 day: bet tracking and sportsbook links are blocked.
 10. **Prediction history** - filters by market/outcome/category; calibration chart and walk-forward table (Pro).
 11. **Audit trail** - *Admin -> Audit log* lists every change you made.
+12. **Odds & sportsbook links (Phase 5)** - needs `ODDS_PROVIDER=demo` (step 4). The demo odds are synthetic, derived from the model plus a margin,
+    so they never contain value - they exist only to exercise the screens. As admin or a Pro user:
+    - *Odds comparison* (sidebar): best fresh price per prediction, model fair odds and estimated edge; try the edge filter and sorting.
+    - Open a match: the **Odds comparison** card shows three DEMO sportsbooks. "Demo Sportsbook C" carries a warning icon: it settles on a
+      different (05:00) rule than the model, so its odds are not directly comparable. The chart plots best price against the model's fair odds.
+    - Click **Open**: a responsible-gambling dialog appears; **Continue** opens `example.com/demo-sportsbook/...` in a new tab, then offers
+      **Record this bet** (prefilled odds/market/sportsbook). Set a 24-hour limit and record a bet above it, then try Open again: you must
+      explicitly acknowledge the limit. Self-exclude: links are disabled.
+    - *Admin -> Bookmakers*: paste `{"rows":[{"fixture_id":<id from the match URL>,"bookmaker_code":"acme-book","bookmaker_name":"Acme Book","market":"MARKET_A","decimal_odds":1.09,"event_ref":"a1"}]}`
+      into **Import odds**. "Acme Book" appears under **Pending review** (inactive, hidden from users). Give it an `https://...{event_ref}...` link template, countries
+      (e.g. `NG`) and approve it. A user whose profile country is not NG will not see it; one whose country is NG will.
+    - *Admin -> Bookmakers -> Fetch odds now* re-polls the provider; unchanged prices are not re-stored, withdrawn ones are marked suspended.
 
 ## 8. Automated tests
 
 ```bash
 cd backend && source .venv/bin/activate
-pytest                 # 110 tests, ~70 s, uses the projectfive_test database
+pytest                 # 137 tests, ~90 s, uses the projectfive_test database
 ruff check .
 ```
 

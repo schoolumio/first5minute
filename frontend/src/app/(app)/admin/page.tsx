@@ -361,14 +361,81 @@ function Models() {
   );
 }
 
+interface BookmakerRow {
+  id: number; code: string; name: string; website_url: string | null; deep_link_template: string | null; countries: string[]; is_active: boolean;
+  source: string; is_demo: boolean; pending_review: boolean; settlement_rule_id: number | null; settlement_rule_code: string | null; last_seen_at: string | null;
+}
+
+function BookmakerForm({ b, rules, onSave, busy, cta }: { b: BookmakerRow; rules: { id: number; code: string; is_default: boolean }[]; onSave: (body: object) => void; busy: boolean; cta: string }) {
+  return (
+    <form className="grid gap-3 md:grid-cols-12" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget);
+      onSave({ deep_link_template: String(f.get("tpl") || "") || null, countries: String(f.get("countries") || "").split(",").map((x) => x.trim()).filter(Boolean),
+        settlement_rule_id: f.get("rule") ? Number(f.get("rule")) : null, is_active: true }); }}>
+      <Field label="Authorised link template" hint="https only; use {event_ref} where the event id goes" className="md:col-span-5"><Input name="tpl" defaultValue={b.deep_link_template ?? ""} placeholder="https://sportsbook.example/event/{event_ref}?ref=..." /></Field>
+      <Field label="Countries" hint="ISO codes, empty = all" className="md:col-span-2"><Input name="countries" defaultValue={b.countries.join(", ")} placeholder="NG, GH" /></Field>
+      <Field label="Settlement rule" hint="blank = same as model" className="md:col-span-3"><Select name="rule" defaultValue={b.settlement_rule_id ?? ""}><option value="">Same as default</option>{rules.map((r) => <option key={r.id} value={r.id}>{r.code}{r.is_default ? " (default)" : ""}</option>)}</Select></Field>
+      <div className="self-end md:col-span-2"><Button type="submit" size="sm" loading={busy}>{cta}</Button></div>
+    </form>
+  );
+}
+
 function Bookmakers() {
-  const { data, reload } = useApi<{ id: number; code: string; name: string; website_url: string | null; deep_link_template: string | null; is_active: boolean }[]>("/admin/bookmakers");
+  const { data, reload } = useApi<BookmakerRow[]>("/admin/bookmakers");
+  const cfg = useApi<{ settlement_rules: { id: number; code: string; is_default: boolean }[]; "odds.settings": { max_age_minutes: number; max_fixtures_per_run: number; lookahead_hours: number; heartbeat_minutes: number } }>("/admin/settings");
   const a = useAction();
+  const [importText, setImportText] = useState("");
+  const rules = cfg.data?.settlement_rules ?? [];
+  const patch = (id: number, body: object, ok = "Bookmaker updated") => a.run(`bm${id}`, async () => { await api(`/admin/bookmakers/${id}`, { method: "PATCH", body }); reload(); }, ok);
+  const pending = (data ?? []).filter((b) => b.pending_review);
+  const others = (data ?? []).filter((b) => !b.pending_review);
   return (
     <div className="space-y-6">
       {a.msg && <Alert tone={a.msg.tone}>{a.msg.text}</Alert>}
+      <Alert tone="info" title="How sportsbooks reach users">
+        Bookmakers found in an odds feed arrive <strong>inactive</strong>. Only bookmakers you approve here are shown to users, and links are built only from the https template you configure. Execution
+        APIs are not supported: First5Minute never places bets.
+      </Alert>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" loading={a.busy === "odds"} onClick={() => a.run("odds", async () => { const r = await api<{ result: Record<string, unknown> }>("/admin/jobs", { method: "POST", body: { job: "odds" } }); reload(); return r; }, "Odds sync finished - see Providers & sync for details")}>
+          <Play className="h-3.5 w-3.5" /> Fetch odds now
+        </Button>
+      </div>
+
+      {pending.length > 0 && (
+        <Card>
+          <CardHeader title={`Pending review (${pending.length})`} description="Discovered from an odds feed. Configure and approve to make their odds visible." />
+          <CardBody className="space-y-5">
+            {pending.map((b) => (
+              <div key={b.id} className="rounded-[var(--radius-md)] border border-border bg-surface-2 p-4">
+                <p className="mb-3 text-sm font-semibold">{b.name} <span className="font-[family-name:var(--font-mono)] text-xs font-normal text-subtle">{b.code}</span> <Badge>{b.source}</Badge>
+                  {b.last_seen_at && <span className="ml-2 text-xs font-normal text-subtle">last seen {relative(b.last_seen_at)}</span>}</p>
+                <BookmakerForm b={b} rules={rules} busy={a.busy === `bm${b.id}`} cta="Approve" onSave={(body) => patch(b.id, body, `${b.name} approved`)} />
+              </div>
+            ))}
+          </CardBody>
+        </Card>
+      )}
+
       <Card>
-        <CardHeader title="Add bookmaker" description="Only add operators you have an authorised referral / deep-link agreement with." />
+        <CardHeader title="Sportsbooks" description="Approved and manual bookmakers" />
+        {!others.length ? <EmptyState title="No sportsbooks yet">Add one below, or configure an odds provider and run a sync.</EmptyState> : (
+          <CardBody className="space-y-4">
+            {others.map((b) => (
+              <div key={b.id} className="rounded-[var(--radius-md)] border border-border bg-surface-2 p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{b.name} <span className="font-[family-name:var(--font-mono)] text-xs font-normal text-subtle">{b.code}</span> {b.is_demo && <DemoBadge />} <Badge>{b.source}</Badge>
+                    {b.settlement_rule_code && <Badge tone="warn">rule {b.settlement_rule_code}</Badge>}</p>
+                  <div className="flex items-center gap-2 text-xs text-muted">Active <Switch label="Active" checked={b.is_active} onChange={(v) => patch(b.id, { is_active: v })} /></div>
+                </div>
+                <BookmakerForm b={b} rules={rules} busy={a.busy === `bm${b.id}`} cta="Save" onSave={(body) => patch(b.id, { ...body, is_active: b.is_active })} />
+              </div>
+            ))}
+          </CardBody>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader title="Add sportsbook" description="Only add operators you have an authorised referral / deep-link agreement with." />
         <CardBody>
           <form className="grid gap-3 md:grid-cols-5" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); const form = e.currentTarget;
             a.run("add", async () => { await api("/admin/bookmakers", { method: "POST", body: { code: f.get("code"), name: f.get("name"), website_url: f.get("website") || null, deep_link_template: f.get("template") || null } }); form.reset(); reload(); }, "Bookmaker added"); }}>
@@ -380,14 +447,34 @@ function Bookmakers() {
           </form>
         </CardBody>
       </Card>
+
       <Card>
-        <CardHeader title="Bookmakers" />
-        {!data?.length ? <EmptyState title="No bookmakers configured">Odds and sportsbook links appear once bookmakers and an odds provider are configured.</EmptyState> : (
-          <Table><thead><tr><Th>Name</Th><Th>Code</Th><Th>Link template</Th><Th>Active</Th></tr></thead>
-            <tbody>{data.map((b) => (<tr key={b.id}><Td>{b.name}</Td><Td className="font-[family-name:var(--font-mono)] text-xs">{b.code}</Td><Td className="max-w-xs truncate text-xs text-muted">{b.deep_link_template ?? "-"}</Td>
-              <Td><Switch label="Active" checked={b.is_active} onChange={(v) => a.run(String(b.id), async () => { await api(`/admin/bookmakers/${b.id}`, { method: "PATCH", body: { is_active: v } }); reload(); })} /></Td></tr>))}</tbody></Table>
-        )}
+        <CardHeader title="Import odds" description="Load prices from an authorised source (e.g. a licensed feed export). Unknown bookmakers arrive pending; odds at/after kick-off are rejected." />
+        <CardBody className="space-y-3">
+          <textarea className="h-36 w-full rounded-[var(--radius-md)] border border-border bg-surface-2 p-3 font-[family-name:var(--font-mono)] text-xs outline-none focus:border-brand-500" value={importText} onChange={(e) => setImportText(e.target.value)}
+            placeholder={'{"rows":[{"fixture_id":123,"bookmaker_code":"my-book","market":"MARKET_A","decimal_odds":1.24,"event_ref":"abc"}]}'} />
+          <Button size="sm" loading={a.busy === "import"} disabled={!importText.trim()} onClick={() => a.run("import", async () => {
+            const r = await api<{ inserted: number; duplicates: number; errors: string[] }>("/admin/odds/import", { method: "POST", body: JSON.parse(importText) });
+            if (r.errors.length) throw new ApiError(422, `${r.inserted} inserted; ${r.errors.length} rejected - ${r.errors[0]}`);
+            setImportText(""); reload(); return r; }, "Odds imported")}>Import</Button>
+        </CardBody>
       </Card>
+
+      {cfg.data && (
+        <Card>
+          <CardHeader title="Odds settings" description="Freshness and polling budget" />
+          <CardBody>
+            <form className="grid grid-cols-2 gap-4 md:grid-cols-5" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); const n = (k: string) => Number(f.get(k));
+              a.run("oddscfg", async () => { await api("/admin/settings/odds.settings", { method: "PUT", body: { max_age_minutes: n("age"), max_fixtures_per_run: n("fx"), lookahead_hours: n("look"), heartbeat_minutes: n("hb") } }); cfg.reload(); }, "Odds settings saved"); }}>
+              <Field label="Stale after (min)"><Input name="age" type="number" defaultValue={cfg.data["odds.settings"].max_age_minutes} /></Field>
+              <Field label="Fixtures per sync"><Input name="fx" type="number" defaultValue={cfg.data["odds.settings"].max_fixtures_per_run} /></Field>
+              <Field label="Look-ahead (h)"><Input name="look" type="number" defaultValue={cfg.data["odds.settings"].lookahead_hours} /></Field>
+              <Field label="Heartbeat (min)"><Input name="hb" type="number" defaultValue={cfg.data["odds.settings"].heartbeat_minutes} /></Field>
+              <div className="self-end"><Button type="submit" loading={a.busy === "oddscfg"}>Save</Button></div>
+            </form>
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }

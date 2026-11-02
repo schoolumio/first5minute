@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,7 @@ from app.models import (
 )
 from app.providers.football.registry import provider_status
 from app.schemas.common import competition_out, fixture_out, user_out
+from app.services import odds as odds_svc
 from app.services.audit import audit
 from app.services.entitlements import entitlements
 from app.services.settings import get_setting, set_setting
@@ -230,7 +231,7 @@ def missing_events(p: Pagination = Depends(), db: Session = Depends(get_db)) -> 
 
 
 class JobIn(BaseModel):
-    job: str = Field(pattern="^(sync|scan|settle|backtest|train)$")
+    job: str = Field(pattern="^(sync|scan|settle|backtest|train|odds)$")
 
 
 @router.post("/jobs")
@@ -312,32 +313,60 @@ def rollback_model_endpoint(market: str, request: Request, admin: User = Depends
 
 
 # --- bookmakers ----------------------------------------------------------------
+def _clean_countries(v: list[str] | None) -> list[str] | None:
+    if v is None:
+        return None
+    out = []
+    for c in v:
+        c = c.strip().upper()
+        if len(c) != 2 or not c.isalpha():
+            raise ValueError("countries must be two-letter ISO codes, e.g. NG, GH")
+        out.append(c)
+    return sorted(set(out))
+
+
+def _clean_template(v: str | None) -> str | None:
+    return None if not v else odds_svc.validate_link_template(v)
+
+
 class BookmakerIn(BaseModel):
     code: str = Field(pattern="^[a-z0-9_-]{2,48}$")
     name: str = Field(max_length=120)
     website_url: HttpUrl | None = None
-    deep_link_template: str | None = Field(default=None, max_length=500, pattern="^https://")
+    deep_link_template: str | None = Field(default=None, max_length=500)
     countries: list[str] = Field(default_factory=list)
+    settlement_rule_id: int | None = None
     is_active: bool = True
+
+    _c = field_validator("countries")(_clean_countries)
+    _t = field_validator("deep_link_template")(_clean_template)
 
 
 class BookmakerUpdateIn(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     website_url: HttpUrl | None = None
-    deep_link_template: str | None = Field(default=None, max_length=500, pattern="^https://")
+    deep_link_template: str | None = Field(default=None, max_length=500)
     countries: list[str] | None = None
+    settlement_rule_id: int | None = None
     is_active: bool | None = None
 
+    _c = field_validator("countries")(_clean_countries)
+    _t = field_validator("deep_link_template")(_clean_template)
 
-def _bm_out(b: Bookmaker) -> dict:
+
+def _bm_out(b: Bookmaker, rules: dict[int, str] | None = None) -> dict:
     return {"id": b.id, "code": b.code, "name": b.name, "website_url": b.website_url,
             "deep_link_template": b.deep_link_template, "countries": b.countries, "is_active": b.is_active,
-            "supports_execution_api": b.supports_execution_api}
+            "source": b.source, "is_demo": b.is_demo, "pending_review": (not b.is_active) and b.source != "demo",
+            "settlement_rule_id": b.settlement_rule_id, "settlement_rule_code": (rules or {}).get(b.settlement_rule_id or -1),
+            "last_seen_at": b.last_seen_at.isoformat() if b.last_seen_at else None,
+            "supports_execution_api": False}   # execution is never enabled in this release
 
 
 @router.get("/bookmakers")
 def list_bookmakers(db: Session = Depends(get_db)) -> list[dict]:
-    return [_bm_out(b) for b in db.scalars(select(Bookmaker).order_by(Bookmaker.name)).all()]
+    rules = {r.id: r.code for r in db.scalars(select(SettlementRule))}
+    return [_bm_out(b, rules) for b in db.scalars(select(Bookmaker).order_by(Bookmaker.is_active, Bookmaker.name)).all()]
 
 
 @router.post("/bookmakers", status_code=201)
@@ -345,6 +374,8 @@ def create_bookmaker(body: BookmakerIn, request: Request, admin: User = Depends(
                      db: Session = Depends(get_db)) -> dict:
     if db.scalar(select(Bookmaker.id).where(Bookmaker.code == body.code)):
         raise HTTPException(409, "Bookmaker code already exists")
+    if body.settlement_rule_id is not None and db.get(SettlementRule, body.settlement_rule_id) is None:
+        raise HTTPException(422, "Unknown settlement rule")
     data = body.model_dump()
     data["website_url"] = str(body.website_url) if body.website_url else None
     b = Bookmaker(**data)
@@ -361,12 +392,43 @@ def update_bookmaker(bookmaker_id: int, body: BookmakerUpdateIn, request: Reques
     b = db.get(Bookmaker, bookmaker_id)
     if b is None:
         raise HTTPException(404, "Bookmaker not found")
-    for k, v in body.model_dump(exclude_none=True).items():
-        setattr(b, k, str(v) if k == "website_url" else v)
-    audit(db, "admin.bookmaker_updated", admin.id, "bookmaker", b.id, body.model_dump(exclude_none=True, mode="json"),
+    changes = {k: getattr(body, k) for k in body.model_fields_set}          # explicit nulls clear a field
+    if changes.get("settlement_rule_id") is not None and db.get(SettlementRule, changes["settlement_rule_id"]) is None:
+        raise HTTPException(422, "Unknown settlement rule")
+    if changes.get("is_active") and not (changes.get("deep_link_template") or b.deep_link_template) and b.source != "demo":
+        pass   # allowed: odds are shown without a link until an authorised link template is configured
+    for k, v in changes.items():
+        setattr(b, k, str(v) if k == "website_url" and v is not None else v)
+    audit(db, "admin.bookmaker_updated", admin.id, "bookmaker", b.id, body.model_dump(include=set(changes), mode="json"),
           client_ip(request))
     db.commit()
-    return _bm_out(b)
+    return _bm_out(b, {r.id: r.code for r in db.scalars(select(SettlementRule))})
+
+
+class OddsRowIn(BaseModel):
+    fixture_id: int
+    bookmaker_code: str = Field(pattern="^[a-z0-9_-]{2,48}$")
+    bookmaker_name: str | None = Field(default=None, max_length=120)
+    market: str = Field(pattern="^MARKET_[AB]$")
+    selection: str | None = Field(default=None, max_length=64)
+    decimal_odds: float = Field(gt=1.0, le=1000.0)
+    is_available: bool = True
+    captured_at: datetime | None = None
+    event_ref: str | None = Field(default=None, max_length=128)
+
+
+class OddsImportIn(BaseModel):
+    rows: list[OddsRowIn] = Field(min_length=1, max_length=1000)
+
+
+@router.post("/odds/import")
+def import_odds_endpoint(body: OddsImportIn, request: Request, admin: User = Depends(require_admin),
+                         db: Session = Depends(get_db)) -> dict:
+    """Load odds from an authorised source (e.g. a licensed feed export). New bookmakers arrive inactive for review."""
+    result = odds_svc.import_odds(db, [r.model_dump() for r in body.rows])
+    audit(db, "admin.odds_imported", admin.id, "odds", None, {k: v for k, v in result.items() if k != "errors"}, client_ip(request))
+    db.commit()
+    return result
 
 
 # --- settings ------------------------------------------------------------------
@@ -405,6 +467,13 @@ class ModelParamsIn(BaseModel):
     competition_min_sample: int = Field(ge=0, le=1000)
 
 
+class OddsSettingsIn(BaseModel):
+    max_age_minutes: int = Field(ge=5, le=1440)
+    max_fixtures_per_run: int = Field(ge=1, le=1000)
+    lookahead_hours: int = Field(ge=1, le=336)
+    heartbeat_minutes: int = Field(ge=5, le=1440)
+
+
 class FlagsIn(BaseModel):
     registrations_open: bool
     maintenance_mode: bool
@@ -413,6 +482,7 @@ class FlagsIn(BaseModel):
 SETTINGS_SCHEMAS = {
     "scanner.thresholds": ThresholdsIn,
     "scanner.eligibility": EligibilityIn,
+    "odds.settings": OddsSettingsIn,
     "model.baseline": ModelParamsIn,
     "platform.flags": FlagsIn,
 }
@@ -435,7 +505,11 @@ def put_setting(key: str, body: dict, request: Request, admin: User = Depends(re
     schema = SETTINGS_SCHEMAS.get(key)
     if schema is None:
         raise HTTPException(404, "Unknown setting")
-    value = schema.model_validate(body).model_dump()
+    try:
+        value = schema.model_validate(body).model_dump()
+    except ValidationError as exc:
+        errors = [{"field": ".".join(str(x) for x in e["loc"]), "message": e["msg"]} for e in exc.errors()]
+        raise HTTPException(422, {"message": "Invalid setting value", "errors": errors}) from exc
     if key == "scanner.thresholds":
         for m in ("MARKET_A", "MARKET_B"):
             if value[m]["watchlist_min_probability"] > value[m]["qualified_min_probability"]:

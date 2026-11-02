@@ -29,15 +29,23 @@ class NormalizedOdds:
 
 class OddsProvider(abc.ABC):
     name = "base"
+    fixture_provider = "base"   # which football provider's fixture ids this feed understands
+    is_demo = False
 
     @abc.abstractmethod
     def odds_for_fixture(self, provider_fixture_id: str) -> list[NormalizedOdds]: ...
+
+    def bookmaker_defaults(self, code: str) -> dict:
+        """Attributes for a bookmaker seen for the first time. Default: a pending (inactive, link-less) record
+        that an administrator must review and approve before its odds are shown to users."""
+        return {}
 
 
 class NullOddsProvider(OddsProvider):
     """No odds source configured: returns nothing (odds are never invented)."""
 
     name = "none"
+    fixture_provider = "none"
 
     def odds_for_fixture(self, provider_fixture_id: str) -> list[NormalizedOdds]:
         return []
@@ -49,6 +57,7 @@ class ApiFootballOddsProvider(OddsProvider):
     intentionally conservative - unknown bets are ignored, never guessed."""
 
     name = "api_football"
+    fixture_provider = "api_football"
     BET_NAME_MAP = {
         ("goals in first 5 minutes", "no"): "MARKET_A",
         ("1x2 - 5 minutes", "draw"): "MARKET_B",
@@ -95,9 +104,14 @@ class ApiFootballOddsProvider(OddsProvider):
         return out
 
 
-def get_odds_provider() -> OddsProvider:
-    if get_settings().odds_provider == "api_football":
+def get_odds_provider(db=None) -> OddsProvider:
+    kind = get_settings().odds_provider
+    if kind == "api_football":
         return ApiFootballOddsProvider()
+    if kind == "demo":
+        from app.providers.odds.demo import DemoOddsProvider
+
+        return DemoOddsProvider(db)
     return NullOddsProvider()
 
 
@@ -114,3 +128,15 @@ class SportsbookExecutionAdapter(abc.ABC):
 
     @abc.abstractmethod
     def submit_confirmed(self, user_id: int, slip_id: str, confirmation_token: str) -> dict: ...
+
+
+class ExecutionNotEnabled(Exception):
+    """Raised for any attempt to place a bet. Assisted betting is link-out only in this release."""
+
+
+def get_execution_adapter(bookmaker_code: str) -> SportsbookExecutionAdapter:
+    """No sportsbook execution adapter is enabled. Bets are never placed by First5Minute: users open the
+    operator's own site through an authorised link and place any bet themselves. A future adapter must be
+    registered here only after the operator has approved an execution API, and must require a fresh,
+    explicit per-bet confirmation token from the user."""
+    raise ExecutionNotEnabled(f"sportsbook execution is not enabled for '{bookmaker_code}'")

@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   Radar,
+  Scale,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import { useApi } from "@/lib/hooks";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/scanner", label: "Match scanner", icon: Radar },
+  { href: "/odds", label: "Odds comparison", icon: Scale },
   { href: "/predictions", label: "Prediction history", icon: History },
   { href: "/account", label: "Account", icon: CircleUser },
 ];
