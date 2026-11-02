@@ -22,3 +22,10 @@ next-env.d.ts
 # Local data
 *.log
 mlruns/
+
+# Runtime artifacts (never commit)
+dump.rdb
+backend/model_store/
+model_store/
+mlflow.db
+backend/mlflow.db
