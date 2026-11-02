@@ -45,6 +45,8 @@ PLACES = [
 ]
 ROUND_SPACING_DAYS = 4
 PLAYED_ROUNDS_BEFORE_ANCHOR = 17
+# The low-coverage cup starts later so it still has upcoming fixtures: the scanner then shows them as EXCLUDED (eligibility demo).
+PLAYED_ROUNDS_OVERRIDE = {"d-regional": 6}
 HOURS = [12, 14, 16, 18, 19, 20]
 
 
@@ -84,8 +86,9 @@ class DemoFootballProvider(b.FootballDataProvider):
     def _build(self) -> None:
         rng = random.Random(self.seed)
         place_iter = iter(rng.sample(PLACES * 3, len(PLACES) * 3))
-        start = datetime.combine(self.anchor, time(0), UTC) - timedelta(days=ROUND_SPACING_DAYS * PLAYED_ROUNDS_BEFORE_ANCHOR)
         for cid, cname, country, gender, n_teams, missing_rate, early_mult in DEMO_COMPETITIONS:
+            played = PLAYED_ROUNDS_OVERRIDE.get(cid, PLAYED_ROUNDS_BEFORE_ANCHOR)
+            start = datetime.combine(self.anchor, time(0), UTC) - timedelta(days=ROUND_SPACING_DAYS * played)
             comp = b.NormalizedCompetition(provider_id=cid, name=cname, country=country, gender=gender,
                                            type="cup" if "Cup" in cname else "league", season_label="Demo 2026")
             teams: list[_TeamParams] = []
