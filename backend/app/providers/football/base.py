@@ -101,6 +101,14 @@ class ProviderNotConfigured(ProviderError):
     """Raised when a provider is selected but its credentials are missing."""
 
 
+class ProviderQuotaExceeded(ProviderError):
+    """The provider's daily/monthly request allowance is used up. Work is resumable: try again after the reset."""
+
+
+class LeagueScopeError(ProviderError):
+    """A real provider is active but no league allowlist is configured (would sync every competition worldwide)."""
+
+
 class FootballDataProvider(abc.ABC):
     """Interface every football data adapter implements."""
 
@@ -114,6 +122,15 @@ class FootballDataProvider(abc.ABC):
     @abc.abstractmethod
     def fixture_with_events(self, provider_fixture_id: str) -> NormalizedFixture:
         """One fixture including its full event timeline."""
+
+    events_batch_size = 1   # how many fixtures `fixtures_with_events` can fetch in one request
+
+    def fixtures_with_events(self, provider_fixture_ids: list[str]) -> list[NormalizedFixture]:
+        """Fixtures including timelines for several ids. Adapters with a bulk endpoint override this to save requests."""
+        return [self.fixture_with_events(i) for i in provider_fixture_ids]
+
+    def search_leagues(self, query: str) -> list[dict[str, Any]]:
+        raise NotImplementedError(f"{self.name} does not support league search")
 
     @abc.abstractmethod
     def team_recent_fixtures(self, provider_team_id: str, last: int = 20) -> list[NormalizedFixture]:

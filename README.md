@@ -130,6 +130,8 @@ All variables are documented in [`.env.example`](.env.example). The important on
 
 ## Connecting real data
 
+> Step-by-step (Windows cmd and Linux/macOS): **docs/LOCAL_TESTING.md, section 10**. A league allowlist (`FOOTBALL_LEAGUE_IDS`) is required.
+
 1. Obtain an API-Football or Sportmonks key and set `FOOTBALL_PROVIDER` + the key.
 2. Run `python -m app.cli sync` (or let Celery beat run) - fixtures for the past 2 and next 3 days are pulled; final fixtures are fetched with full event timelines.
 3. Backfill history per competition before relying on predictions: the scanner **excludes** fixtures whose teams lack enough reliable, timestamped matches.
@@ -164,7 +166,7 @@ MLflow 3 needs a database backend such as `sqlite:///mlflow.db` or a tracking se
 cd frontend && npm test && npm run typecheck && npm run build
 ```
 
-The backend suite (137 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
+The backend suite (152 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
 rules, Poisson calculations, ingestion/normalisation, provider adapters with mock payloads, retry and
 rate limiting, data-leakage guards, prediction immutability, settlement corrections, walk-forward
 backtesting, plan permissions, admin permissions and Paystack webhooks.

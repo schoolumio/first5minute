@@ -210,7 +210,7 @@ Expected numbers come from a fresh seed; yours may differ by a few.
 
 ```bash
 cd backend && source .venv/bin/activate
-pytest                 # 137 tests, ~90 s, uses the projectfive_test database
+pytest                 # 152 tests, ~90 s, uses the projectfive_test database
 ruff check .
 ```
 
@@ -234,15 +234,49 @@ celery -A app.workers.celery_app beat -l info
 
 Beat runs sync every 30 min, scan at :05/:35, settlement every 15 min, training weekly.
 
-## 10. Optional: real football data
+## 10. Real football data (API-Football)
 
-1. Put a key in `.env`: `FOOTBALL_PROVIDER=api_football` + `API_FOOTBALL_KEY=...` (or `sportmonks` + `SPORTMONKS_TOKEN=...`); restart the API.
-2. Remove demo data: `python -m app.cli reset-demo`.
-3. Pull history and upcoming fixtures: `python -m app.cli backfill --days 90`, then `python -m app.cli sync`, `scan`, `settle`.
-4. Check *Admin -> Providers & sync* (health, errors) and *Competitions* (timeline coverage - poor leagues get excluded automatically).
+Plan limits matter: API-Football's **free plan allows 100 requests/day and 10/minute**. This app fetches match timelines in bulk (20 per
+request) and only for the leagues you list, so a few leagues fit; a large backfill may take several days on the free plan (it **resumes
+where it stopped**). Paid plans have far higher limits. The adapter was written from the provider documentation and has only been tested
+against mock responses - the `provider-check` step below tells you whether real payloads parse correctly **before** you spend quota.
 
-Adapters were built from provider documentation and tested only with mock responses - **verify against your plan's real payloads**
-(especially goal-minute precision and which leagues include events).
+**Windows (cmd), in Command Prompt A with the venv active (`.venv\Scripts\activate`) inside `backend`:**
+
+1. Get a key at https://dashboard.api-football.com and edit `.env` (`notepad ..\.env`):
+   ```
+   FOOTBALL_PROVIDER=api_football
+   API_FOOTBALL_KEY=your-key-here
+   API_FOOTBALL_REQUESTS_PER_MINUTE=10
+   ODDS_PROVIDER=none
+   ```
+2. Stop the API (Ctrl+C), then find league ids (one request per search) and add them to `.env` as `FOOTBALL_LEAGUE_IDS=39,140`:
+   ```bat
+   python -m app.cli leagues --search premier
+   python -m app.cli leagues --search liga
+   ```
+3. Remove the demo data and run the safety check (about 6 requests):
+   ```bat
+   python -m app.cli reset-demo
+   python -m app.cli provider-check
+   ```
+   Look for `"verdict": "OK: ..."`, `timeline_reconciles_with_score: true`, and a plausible `score_at_5_minutes`.
+4. Backfill history (resumable; stops with a clear message if the daily quota is reached - run the same command again later):
+   ```bat
+   python -m app.cli backfill --days 120
+   python -m app.cli sync
+   python -m app.cli scan
+   python -m app.cli settle
+   ```
+5. Start the API (`uvicorn app.main:app --reload --port 8000`) and use the app: the banner now says live data. *Admin -> Providers & sync*
+   shows requests, errors and the league list; *Admin -> Competitions* shows timeline coverage per league.
+
+What to expect: teams need at least 5 (watchlist) to 10 (qualified) matches with reliable event timelines, so a 120-day backfill of a
+top league is the minimum. Real five-minute no-goal probabilities are about 85-90 %, so few matches reach the default 90 % qualified
+threshold - tune it in *Admin -> Settings*. Leagues whose timelines do not reconcile with scores are excluded automatically.
+Do not enable `ODDS_PROVIDER=api_football` until you have confirmed your bookmakers actually price these markets.
+
+**Linux / macOS:** same commands, with `source .venv/bin/activate` and `nano ../.env`.
 
 ## 11. Optional: Paystack test payments
 

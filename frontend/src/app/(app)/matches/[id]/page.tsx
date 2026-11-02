@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { ArrowLeft, Bookmark, Info } from "lucide-react";
 import { ComparisonChart, SERIES, TimingChart } from "@/components/charts/charts";
 import { OddsPanel } from "@/components/match/odds-panel";
@@ -119,6 +119,13 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
   const [win, setWin] = useState<"last5" | "last10" | "last20">("last10");
   const [saved, setSaved] = useState(false);
 
+  // Deep link from the Odds page (#odds): the card only exists once data has loaded.
+  useEffect(() => {
+    if (data && typeof window !== "undefined" && window.location.hash === "#odds") {
+      document.getElementById("odds")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [data]);
+
   if (loading) return <div className="space-y-4"><Skeleton className="h-28" /><Skeleton className="h-72" /></div>;
   if (error || !data) return <Alert tone="danger">{error?.message ?? "Match not found"}</Alert>;
   const { fixture: fx, home, away } = data;
@@ -157,7 +164,7 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
         <PredictionPanel p={data.predictions.MARKET_B} market="MARKET_B" />
       </div>
 
-      <Card className="mt-6">
+      <Card className="mt-6 scroll-mt-20" id="odds">
             <CardHeader title="Odds comparison" description="Only odds recorded from configured providers are shown" />
             <CardBody>{has("odds_comparison") ? <OddsPanel fixtureId={fx.id} /> : <UpgradeNotice feature="Odds comparison" />}</CardBody>
           </Card>

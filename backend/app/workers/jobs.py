@@ -16,8 +16,13 @@ from app.services.billing import expire_subscriptions
 
 
 def job_sync(db: Session, past_days: int = 2, future_days: int = 3) -> dict:
+    from app.providers.football.base import LeagueScopeError
+
     provider = get_provider(db)
-    stats = sync_window(db, provider, past_days, future_days)
+    try:
+        stats = sync_window(db, provider, past_days, future_days)
+    except LeagueScopeError as exc:
+        return {"skipped": str(exc)}
     pending = refresh_pending_results(db, provider)
     return {"window": stats.as_dict(), "refreshed": pending.as_dict()}
 

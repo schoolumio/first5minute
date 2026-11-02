@@ -40,6 +40,12 @@ def get_provider(db: Session | None = None, name: str | None = None) -> Football
     return getattr(mod, cls)()
 
 
+def league_scope_status() -> dict:
+    s = get_settings()
+    return {"league_ids": [i.strip() for i in s.football_league_ids if i.strip()], "allow_all": s.football_allow_all_leagues,
+            "required": s.football_provider != "demo"}
+
+
 def provider_status() -> list[dict]:
     """Configuration status for every known provider (never exposes secrets)."""
     s = get_settings()

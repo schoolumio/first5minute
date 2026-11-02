@@ -34,11 +34,8 @@ export function Logo({ className, compact }: { className?: string; compact?: boo
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <LogoMark className="h-8 w-8 text-fg" />
       {!compact && (
-        <span className="leading-none">
-          <span className="block font-[family-name:var(--font-display)] text-[15px] font-extrabold tracking-tight">
-            FIRST<span className="text-brand-500">5</span>MINUTE
-          </span>
-          <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-[0.2em] text-muted">The first five minutes. Decoded.</span>
+        <span className="font-[family-name:var(--font-display)] text-[17px] font-extrabold leading-none tracking-tight">
+          FIRST<span className="text-brand-500">5</span>MINUTE
         </span>
       )}
     </span>

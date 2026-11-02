@@ -13,6 +13,7 @@ os.environ["ENVIRONMENT"] = "test"
 os.environ["EMAIL_BACKEND"] = "memory"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["FOOTBALL_PROVIDER"] = "demo"
+os.environ["FOOTBALL_ALLOW_ALL_LEAGUES"] = "true"   # tests use mock providers without an allowlist
 os.environ["PAYMENT_PROVIDER"] = "none"
 os.environ["ODDS_PROVIDER"] = "none"
 os.environ["LOG_LEVEL"] = "WARNING"

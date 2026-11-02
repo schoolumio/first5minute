@@ -58,6 +58,8 @@ class IngestStats:
     events_replaced: int = 0
     stats_derived: int = 0
     skipped: int = 0
+    filtered_out: int = 0
+    quota_exhausted: bool = False
     errors: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:

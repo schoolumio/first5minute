@@ -114,6 +114,7 @@ def parse_fixture(item: dict, include_events: bool) -> b.NormalizedFixture:
 
 class ApiFootballProvider(b.FootballDataProvider):
     name = "api_football"
+    events_batch_size = 20   # /fixtures?ids=1-2-3 returns up to 20 fixtures *with events* in a single request
 
     def __init__(self, client: ProviderHttpClient | None = None):
         settings = get_settings()
@@ -129,6 +130,9 @@ class ApiFootballProvider(b.FootballDataProvider):
     def _response(self, data: dict) -> list:
         errors = data.get("errors")
         if errors and (isinstance(errors, dict) and errors or isinstance(errors, list) and len(errors)):
+            text = str(errors)
+            if (isinstance(errors, dict) and "requests" in errors) or "request limit" in text.lower():
+                raise b.ProviderQuotaExceeded(f"api_football request limit reached: {errors}")
             raise b.ProviderError(f"api_football error: {errors}")
         return data.get("response") or []
 
@@ -142,6 +146,23 @@ class ApiFootballProvider(b.FootballDataProvider):
         if not items:
             raise b.ProviderError(f"fixture {provider_fixture_id} not found")
         return parse_fixture(items[0], include_events=True)
+
+    def fixtures_with_events(self, provider_fixture_ids: list[str]) -> list[b.NormalizedFixture]:
+        out: list[b.NormalizedFixture] = []
+        for i in range(0, len(provider_fixture_ids), self.events_batch_size):
+            chunk = provider_fixture_ids[i:i + self.events_batch_size]
+            data = self.client.get("/fixtures", {"ids": "-".join(chunk)}, "fixtures_with_events_batch")
+            out.extend(parse_fixture(item, include_events=True) for item in self._response(data))
+        return out
+
+    def search_leagues(self, query: str) -> list[dict]:
+        data = self.client.get("/leagues", {"search": query}, "search_leagues")
+        rows = []
+        for item in self._response(data):
+            lg = item.get("league") or {}
+            rows.append({"id": lg.get("id"), "name": lg.get("name"), "type": lg.get("type"),
+                         "country": (item.get("country") or {}).get("name")})
+        return rows
 
     def team_recent_fixtures(self, provider_team_id: str, last: int = 20) -> list[b.NormalizedFixture]:
         data = self.client.get("/fixtures", {"team": provider_team_id, "last": last}, "team_recent_fixtures")

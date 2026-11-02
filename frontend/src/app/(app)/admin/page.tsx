@@ -138,6 +138,7 @@ function Competitions() {
 }
 
 interface Providers {
+  league_scope: { league_ids: string[]; allow_all: boolean; required: boolean };
   football: { name: string; label: string; configured: boolean; active: boolean; env: string | null }[];
   odds_provider: string; payment_provider: string;
   health_24h: Record<string, { success: number; error: number; rate_limited: number; avg_latency_ms: number | null }>;
@@ -153,6 +154,14 @@ function ProvidersTab() {
   return (
     <div className="space-y-6">
       {a.msg && <Alert tone={a.msg.tone}>{a.msg.text}</Alert>}
+      {data.league_scope.required && !data.league_scope.league_ids.length && !data.league_scope.allow_all && (
+        <Alert tone="danger" title="No league allowlist configured">
+          Syncing is paused to protect your API quota. Set <code>FOOTBALL_LEAGUE_IDS</code> in <code>.env</code> (comma-separated league ids, find them with <code>python -m app.cli leagues --search premier</code>) and restart the API.
+        </Alert>
+      )}
+      {data.league_scope.required && data.league_scope.league_ids.length > 0 && (
+        <Alert tone="info" title={`Ingesting ${data.league_scope.league_ids.length} league(s)`}>League ids: {data.league_scope.league_ids.join(", ")}. All other competitions are ignored.</Alert>
+      )}
       <Card>
         <CardHeader title="Data providers" action={<div className="flex flex-wrap gap-2">{["sync", "scan", "settle", "backtest"].map((j) => (
           <Button key={j} size="sm" variant="outline" loading={a.busy === j} onClick={() => job(j)}><Play className="h-3.5 w-3.5" />{j}</Button>))}</div>} />

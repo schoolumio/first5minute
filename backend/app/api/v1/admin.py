@@ -29,7 +29,7 @@ from app.models import (
     SyncRun,
     User,
 )
-from app.providers.football.registry import provider_status
+from app.providers.football.registry import league_scope_status, provider_status
 from app.schemas.common import competition_out, fixture_out, user_out
 from app.services import odds as odds_svc
 from app.services.audit import audit
@@ -202,6 +202,7 @@ def providers(db: Session = Depends(get_db)) -> dict:
     runs = db.scalars(select(SyncRun).order_by(SyncRun.started_at.desc()).limit(20)).all()
     return {
         "football": provider_status(),
+        "league_scope": league_scope_status(),
         "odds_provider": get_settings().odds_provider,
         "payment_provider": get_settings().payment_provider,
         "health_24h": stats,

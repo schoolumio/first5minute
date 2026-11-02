@@ -60,6 +60,10 @@ class Settings(BaseSettings):
 
     # --- Football data -----------------------------------------------------
     football_provider: Literal["demo", "api_football", "sportmonks"] = "demo"
+    # Comma-separated provider league ids to ingest (e.g. "39,140,135"). REQUIRED for real providers: without it the
+    # sync would pull every competition worldwide and exhaust the API quota. Find ids with `python -m app.cli leagues`.
+    football_league_ids: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    football_allow_all_leagues: bool = False   # explicit opt-in to sync every competition (high request volume)
     api_football_key: str | None = None
     api_football_base_url: str = "https://v3.football.api-sports.io"
     api_football_requests_per_minute: int = 30
@@ -81,7 +85,7 @@ class Settings(BaseSettings):
     paystack_secret_key: str | None = None
     paystack_base_url: str = "https://api.paystack.co"
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", "football_league_ids", mode="before")
     @classmethod
     def _split_origins(cls, v: object) -> object:
         if isinstance(v, str):

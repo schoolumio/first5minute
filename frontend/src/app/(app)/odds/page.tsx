@@ -48,7 +48,7 @@ export default function OddsPage() {
             ) : (
               <>
                 <Table>
-                  <thead><tr><Th>Match</Th><Th>Market</Th><Th className="text-right">Estimate</Th><Th className="text-right">Fair odds</Th><Th className="text-right">Best odds</Th><Th className="text-right">Edge</Th><Th>Updated</Th></tr></thead>
+                  <thead><tr><Th>Match</Th><Th>Market</Th><Th className="text-right">Estimate</Th><Th className="text-right">Fair odds</Th><Th className="text-right">Best odds</Th><Th className="text-right">Edge</Th><Th>Updated</Th><Th /></tr></thead>
                   <tbody>
                     {data.items.map((i) => (
                       <tr key={i.prediction_id} className="hover:bg-surface-2/50">
@@ -60,6 +60,7 @@ export default function OddsPage() {
                         <Td className="text-right"><span className="tabular font-semibold">{i.best.decimal_odds.toFixed(2)}</span><p className="text-xs text-subtle">{i.best.bookmaker} · {i.best.n_books} book{i.best.n_books > 1 && "s"}</p></Td>
                         <Td className="text-right"><EdgeValue edge={i.edge} /></Td>
                         <Td className="whitespace-nowrap text-xs text-muted">{relative(i.best.captured_at)}</Td>
+                        <Td className="text-right"><Link href={`/matches/${i.fixture.id}#odds`} className="inline-flex h-8 items-center rounded-[var(--radius-md)] border border-border-strong px-3 text-xs font-semibold hover:bg-surface-2">Compare &amp; open</Link></Td>
                       </tr>
                     ))}
                   </tbody>

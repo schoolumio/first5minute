@@ -7,11 +7,19 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import utcnow
 from app.core.logging import get_logger
 from app.ingestion.service import Ingestor, IngestStats
 from app.models import Fixture, SyncRun
-from app.providers.football.base import FINAL_STATUSES, FootballDataProvider, ProviderError
+from app.providers.football.base import (
+    FINAL_STATUSES,
+    FootballDataProvider,
+    LeagueScopeError,
+    NormalizedFixture,
+    ProviderError,
+    ProviderQuotaExceeded,
+)
 from app.services.settings import default_rule_row, rule_from_row
 
 log = get_logger(__name__)
@@ -21,28 +29,76 @@ def _ingestor(db: Session, provider: FootballDataProvider) -> Ingestor:
     return Ingestor(db, provider.name, provider.is_demo, rule_from_row(default_rule_row(db)))
 
 
-def sync_days(db: Session, provider: FootballDataProvider, days: list[date], with_events_for_final: bool = True) -> IngestStats:
-    """Ingest fixtures for each day; fetch full timelines for final fixtures.
+def league_scope(provider: FootballDataProvider) -> set[str] | None:
+    """Provider league ids to ingest. ``None`` = no filtering (demo data, or an explicit opt-in to everything).
 
-    Each fixture is committed in its own savepoint so one bad record cannot
-    abort the whole run; errors are collected and reported.
+    Real providers REQUIRE an allowlist: without one the sync would pull every competition worldwide and burn the
+    API quota within minutes."""
+    s = get_settings()
+    if provider.is_demo:
+        return None
+    ids = {i.strip() for i in s.football_league_ids if i.strip()}
+    if ids:
+        return ids
+    if s.football_allow_all_leagues:
+        return None
+    raise LeagueScopeError(
+        "No league allowlist configured. Set FOOTBALL_LEAGUE_IDS in .env (comma-separated provider league ids, e.g. 39,140) - "
+        "find ids with: python -m app.cli leagues --search premier. "
+        "(FOOTBALL_ALLOW_ALL_LEAGUES=true syncs every competition worldwide: very high request volume.)")
+
+
+def _batches(items: list[str], size: int):
+    for i in range(0, len(items), max(1, size)):
+        yield items[i:i + size]
+
+
+def sync_days(db: Session, provider: FootballDataProvider, days: list[date], with_events_for_final: bool = True,
+              league_ids: set[str] | None = None) -> IngestStats:
+    """Ingest fixtures for each day (allowlisted leagues only) and fetch timelines for final fixtures in bulk.
+
+    * Each fixture is ingested in its own savepoint so one bad record cannot abort the run.
+    * When the provider's quota is exhausted the run stops cleanly (``stats.quota_exhausted``); everything fetched so far
+      is kept, and timeline-less fixtures are picked up by the next run.
     """
+    allow = league_ids if league_ids is not None else league_scope(provider)
     run = SyncRun(job="sync_fixtures", provider=provider.name, status="running")
     db.add(run)
     db.commit()
     ing = _ingestor(db, provider)
     try:
         for day in days:
-            for nf in provider.fixtures_by_date(day):
+            try:
+                fixtures = provider.fixtures_by_date(day)
+            except ProviderQuotaExceeded as exc:
+                ing.stats.quota_exhausted = True
+                ing.stats.errors.append(str(exc))
+                break
+            kept = [nf for nf in fixtures if allow is None or nf.competition.provider_id in allow]
+            ing.stats.filtered_out += len(fixtures) - len(kept)
+            detailed: dict[str, NormalizedFixture] = {}
+            if with_events_for_final:
+                need = [nf.provider_id for nf in kept if nf.status in FINAL_STATUSES or nf.status == "abandoned"]
+                for chunk in _batches(need, provider.events_batch_size):
+                    try:
+                        for d in provider.fixtures_with_events(chunk):
+                            detailed[d.provider_id] = d
+                    except ProviderQuotaExceeded as exc:
+                        ing.stats.quota_exhausted = True
+                        ing.stats.errors.append(str(exc))
+                        break
+                    except ProviderError as exc:
+                        ing.stats.errors.append(f"events {','.join(chunk[:3])}...: {exc}")
+            for nf in kept:
                 try:
                     with db.begin_nested():
-                        if with_events_for_final and (nf.status in FINAL_STATUSES or nf.status == "abandoned"):
-                            nf = provider.fixture_with_events(nf.provider_id)
-                        ing.ingest_fixture(nf)
+                        ing.ingest_fixture(detailed.get(nf.provider_id, nf))
                 except (ProviderError, ValueError) as exc:
                     ing.stats.errors.append(f"{nf.provider_id}: {exc}")
             db.commit()
-        run.status = "success" if not ing.stats.errors else "partial"
+            if ing.stats.quota_exhausted:
+                break
+        run.status = "quota_hit" if ing.stats.quota_exhausted else ("success" if not ing.stats.errors else "partial")
     except ProviderError as exc:
         db.rollback()
         run = db.merge(run)
@@ -94,24 +150,28 @@ def backfill_history(db: Session, provider: FootballDataProvider, days: int, chu
     skipped = 0
     for day in all_days:
         start = datetime.combine(day, datetime.min.time(), UTC)
-        finals = db.scalar(
-            select(func.count(Fixture.id)).where(
-                Fixture.provider == provider.name, Fixture.kickoff_at >= start, Fixture.kickoff_at < start + timedelta(days=1),
-                Fixture.status.in_(list(FINAL_STATUSES)), Fixture.events_synced_at.isnot(None))) or 0
-        if finals and not force:
+        day_filter = (Fixture.provider == provider.name, Fixture.kickoff_at >= start, Fixture.kickoff_at < start + timedelta(days=1),
+                      Fixture.status.in_(list(FINAL_STATUSES)))
+        finals = db.scalar(select(func.count(Fixture.id)).where(*day_filter)) or 0
+        unsynced = db.scalar(select(func.count(Fixture.id)).where(*day_filter, Fixture.events_synced_at.is_(None))) or 0
+        if finals and not unsynced and not force:        # a day interrupted by a quota stop is retried, not skipped
             skipped += 1
         else:
             todo.append(day)
     totals = {"days_requested": days, "days_skipped": skipped, "days_synced": 0, "fixtures_created": 0, "fixtures_updated": 0,
-              "events_replaced": 0, "errors": []}
+              "events_replaced": 0, "filtered_out": 0, "stopped_reason": None, "errors": []}
     for i in range(0, len(todo), chunk_days):
         chunk = todo[i:i + chunk_days]
         stats = sync_days(db, provider, chunk)
         totals["days_synced"] += len(chunk)
-        for k in ("fixtures_created", "fixtures_updated", "events_replaced"):
+        for k in ("fixtures_created", "fixtures_updated", "events_replaced", "filtered_out"):
             totals[k] += getattr(stats, k)
         totals["errors"].extend(stats.errors[:10])
         if progress:
             progress(chunk[-1], totals)
+        if stats.quota_exhausted:
+            totals["stopped_reason"] = ("provider request limit reached - progress is saved; run the same command again "
+                                        "after your quota resets (it resumes where it stopped)")
+            break
     totals["errors"] = totals["errors"][:50]
     return totals
