@@ -114,6 +114,9 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("reset-demo")
     for job in ("sync", "scan", "settle", "backtest", "expire"):
         sub.add_parser(job)
+    b = sub.add_parser("backfill", help="pull past fixtures + event timelines from the configured provider (resumable)")
+    b.add_argument("--days", type=int, default=90)
+    b.add_argument("--force", action="store_true", help="re-fetch days that were already synchronised")
     t = sub.add_parser("train", help="train & walk-forward evaluate ML models (promotes only if all gates pass)")
     t.add_argument("--blocks", type=int, default=6)
     t.add_argument("--no-promote", action="store_true")
@@ -128,6 +131,18 @@ def main(argv: list[str] | None = None) -> None:
         with SessionLocal() as db:
             reset_demo(db)
         print("Demo data removed")
+    elif args.cmd == "backfill":
+        from app.ingestion.sync import backfill_history
+        from app.providers.football.registry import get_provider
+
+        with SessionLocal() as db:
+            provider = get_provider(db)
+            print(f"Backfilling {args.days} days from provider '{provider.name}' ...")
+            def show(day, t):
+                print(f"  through {day}: {t['fixtures_created']} new, {t['events_replaced']} timelines")
+
+            out = backfill_history(db, provider, args.days, force=args.force, progress=show)
+            print(json.dumps(out, indent=2, default=str))
     elif args.cmd == "train":
         from app.workers.jobs import job_train
 

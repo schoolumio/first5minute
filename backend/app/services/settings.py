@@ -19,6 +19,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "qualified_min_data_quality": "medium",
         "lookahead_hours": 72,
     },
+    "scanner.eligibility": {
+        "lookback_days": 365,
+        "min_finished": 20,          # below this the competition is "unassessed" (no evidence against it)
+        "min_coverage": 0.70,        # below this share of reconciled timelines the competition is ineligible
+        "high": {"min_finished": 100, "min_coverage": 0.95},
+        "medium": {"min_finished": 40, "min_coverage": 0.80},
+    },
     "model.baseline": {
         "prior_strength": 8.0,
         "max_history": 20,

@@ -116,17 +116,20 @@ function Competitions() {
   const patch = (id: number, body: object) => a.run(String(id), async () => { await api(`/admin/competitions/${id}`, { method: "PATCH", body }); reload(); }, "Competition updated");
   return (
     <Card>
-      <CardHeader title="Competitions" description="Eligibility for scanning and data-quality tier" />
+      <CardHeader title="Competitions & data eligibility" description="Eligibility is assessed automatically from timeline coverage; override per competition if needed."
+        action={<Button size="sm" variant="outline" loading={a.busy === "assess"} onClick={() => a.run("assess", async () => { await api("/admin/competitions/assess", { method: "POST" }); reload(); }, "Eligibility re-assessed")}>Re-assess now</Button>} />
       {a.msg && <CardBody className="pb-0"><Alert tone={a.msg.tone}>{a.msg.text}</Alert></CardBody>}
       <Table>
-        <thead><tr><Th>Competition</Th><Th>Country</Th><Th className="text-right">Fixtures</Th><Th className="text-right">Timeline coverage</Th><Th>Quality tier</Th><Th>Scan</Th></tr></thead>
+        <thead><tr><Th>Competition</Th><Th>Country</Th><Th className="text-right">Finished</Th><Th className="text-right">Timeline coverage</Th><Th>Status</Th><Th>Mode</Th><Th>Scan</Th></tr></thead>
         <tbody>{data?.map((c) => (
           <tr key={c.id}>
-            <Td className="font-medium">{c.name} {c.is_demo && <DemoBadge />}</Td><Td className="text-xs text-muted">{c.country}</Td>
-            <Td className="tabular text-right">{c.fixtures}</Td>
+            <Td className="font-medium">{c.name} {c.is_demo && <DemoBadge />}{c.eligibility_reason && <p className="max-w-xs text-xs font-normal text-subtle">{c.eligibility_reason}</p>}</Td>
+            <Td className="text-xs text-muted">{c.country}</Td>
+            <Td className="tabular text-right">{c.finished}</Td>
             <Td className="tabular text-right"><span className={c.timeline_coverage != null && c.timeline_coverage < 0.8 ? "text-warn" : ""}>{pct(c.timeline_coverage)}</span></Td>
-            <Td><Select className="h-8 w-28 text-xs" value={c.data_quality_tier} onChange={(e) => patch(c.id, { data_quality_tier: e.target.value })}>
-              {["high", "medium", "low", "unknown"].map((t) => <option key={t} value={t}>{t}</option>)}</Select></Td>
+            <Td className="whitespace-nowrap"><Badge tone={c.eligibility_status === "eligible" ? "brand" : c.eligibility_status === "ineligible" ? "danger" : "neutral"}>{c.eligibility_status}</Badge> <Badge>{c.data_quality_tier}</Badge></Td>
+            <Td><Select className="h-8 w-32 text-xs" value={c.eligibility_mode} onChange={(e) => patch(c.id, { eligibility_mode: e.target.value })}>
+              <option value="auto">auto</option><option value="force_on">force on</option><option value="force_off">force off</option></Select></Td>
             <Td><Switch label="Enabled" checked={c.is_enabled} onChange={(v) => patch(c.id, { is_enabled: v })} /></Td>
           </tr>))}</tbody>
       </Table>
@@ -189,6 +192,7 @@ function ProvidersTab() {
 interface SettingsRes {
   "scanner.thresholds": { MARKET_A: { qualified_min_probability: number; watchlist_min_probability: number }; MARKET_B: { qualified_min_probability: number; watchlist_min_probability: number };
     qualified_min_team_sample: number; watchlist_min_team_sample: number; qualified_min_data_quality: string; lookahead_hours: number };
+  "scanner.eligibility": { lookback_days: number; min_finished: number; min_coverage: number; high: { min_finished: number; min_coverage: number }; medium: { min_finished: number; min_coverage: number } };
   "model.baseline": Record<string, number>;
   "platform.flags": { registrations_open: boolean; maintenance_mode: boolean };
   settlement_rules: { id: number; code: string; description: string; cutoff_seconds: number; minute_convention: string; is_default: boolean }[];
@@ -231,6 +235,25 @@ function SettingsTab() {
             <Field label="Qualified min. data quality"><Select name="dq" defaultValue={t.qualified_min_data_quality}>{["low", "medium", "high"].map((x) => <option key={x}>{x}</option>)}</Select></Field>
             <Field label="Lookahead (hours)"><Input name="lookahead" type="number" defaultValue={t.lookahead_hours} /></Field>
             <div><Button type="submit" loading={a.busy === "thr"}>Save thresholds</Button></div>
+          </form>
+        </CardBody>
+      </Card>
+      <Card>
+        <CardHeader title="Competition eligibility rules" description="Coverage = share of finished fixtures whose goal timeline reconciles with the final score." />
+        <CardBody>
+          <form onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); const n = (k: string) => Number(f.get(k));
+            a.run("elig", async () => { await api("/admin/settings/scanner.eligibility", { method: "PUT", body: { lookback_days: n("lb"), min_finished: n("mf"), min_coverage: n("mc") / 100,
+              high: { min_finished: n("hf"), min_coverage: n("hc") / 100 }, medium: { min_finished: n("mdf"), min_coverage: n("mdc") / 100 } } }); reload(); }, "Eligibility rules saved - applied on the next scan"); }}
+            className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <Field label="Look-back (days)"><Input name="lb" type="number" defaultValue={data["scanner.eligibility"].lookback_days} /></Field>
+            <Field label="Min. finished to assess"><Input name="mf" type="number" defaultValue={data["scanner.eligibility"].min_finished} /></Field>
+            <Field label="Ineligible below coverage %"><Input name="mc" type="number" step="1" defaultValue={Math.round(data["scanner.eligibility"].min_coverage * 100)} /></Field>
+            <div />
+            <Field label="High tier: min finished"><Input name="hf" type="number" defaultValue={data["scanner.eligibility"].high.min_finished} /></Field>
+            <Field label="High tier: coverage %"><Input name="hc" type="number" defaultValue={Math.round(data["scanner.eligibility"].high.min_coverage * 100)} /></Field>
+            <Field label="Medium tier: min finished"><Input name="mdf" type="number" defaultValue={data["scanner.eligibility"].medium.min_finished} /></Field>
+            <Field label="Medium tier: coverage %"><Input name="mdc" type="number" defaultValue={Math.round(data["scanner.eligibility"].medium.min_coverage * 100)} /></Field>
+            <div><Button type="submit" loading={a.busy === "elig"}>Save rules</Button></div>
           </form>
         </CardBody>
       </Card>

@@ -41,6 +41,14 @@ class Competition(TimestampMixin, Base):
     # Admin-controlled eligibility for scanning.
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     data_quality_tier: Mapped[str] = mapped_column(String(8), default="unknown")  # high|medium|low|unknown
+    # Automatic eligibility (see app/scanner/eligibility.py). Admin can force on/off.
+    eligibility_mode: Mapped[str] = mapped_column(String(10), default="auto", server_default="auto")  # auto|force_on|force_off
+    # eligible | ineligible | unassessed
+    eligibility_status: Mapped[str] = mapped_column(String(12), default="unassessed", server_default="unassessed")
+    eligibility_reason: Mapped[str | None] = mapped_column(String(255))
+    coverage_pct: Mapped[float | None] = mapped_column(Float)
+    finished_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    assessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
 
     seasons: Mapped[list[Season]] = relationship(back_populates="competition")

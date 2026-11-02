@@ -124,6 +124,50 @@ def performance(
     return out
 
 
+@router.get("/performance/trend")
+def performance_trend(
+    market: str = Query(pattern="^MARKET_[AB]$"),
+    days: int = Query(default=90, ge=7, le=730),
+    bucket: str = Query(default="week", pattern="^(day|week|month)$"),
+    category: str | None = Query(default=None, pattern="^(qualified|watchlist|below_threshold)$"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Observed hit rate vs mean estimated probability per time bucket (settled won/lost predictions only)."""
+    capped = False
+    if not entitlements(db, user)["features"].get("performance_analytics"):
+        if days > 30:
+            days, capped = 30, True
+    since = datetime.now(UTC) - timedelta(days=days)
+    q = (select(Prediction, PredictionOutcome).join(PredictionOutcome, PredictionOutcome.prediction_id == Prediction.id)
+         .where(Prediction.is_current.is_(True), Prediction.market_code == market, Prediction.kickoff_at >= since,
+                PredictionOutcome.result.in_(["won", "lost"])))
+    if category:
+        q = q.where(Prediction.category == category)
+    groups: dict[str, list[tuple[float, int]]] = {}
+    demo = False
+    for p, o in db.execute(q):
+        d = p.kickoff_at.astimezone(UTC).date()
+        if bucket == "week":
+            key = (d - timedelta(days=d.weekday())).isoformat()
+        elif bucket == "month":
+            key = d.replace(day=1).isoformat()
+        else:
+            key = d.isoformat()
+        groups.setdefault(key, []).append((p.probability, 1 if o.result == "won" else 0))
+        demo = demo or p.is_demo
+    points = []
+    for key in sorted(groups):
+        rows = groups[key]
+        n = len(rows)
+        points.append({
+            "period": key, "n": n, "hit_rate": sum(y for _, y in rows) / n, "mean_predicted": sum(pr for pr, _ in rows) / n,
+            "brier": metrics.brier_score([pr for pr, _ in rows], [y for _, y in rows]),
+        })
+    return {"market": market, "bucket": bucket, "days": days, "capped_by_plan": capped, "points": points, "is_demo": demo,
+            "note": "Buckets with few predictions are noisy; judge trends by the sample size n, not the line alone."}
+
+
 @router.get("/{prediction_id}")
 def get_prediction(prediction_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     p = db.get(Prediction, prediction_id)

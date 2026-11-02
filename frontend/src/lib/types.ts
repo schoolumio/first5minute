@@ -6,6 +6,8 @@ export interface Team { id: number; name: string; short_name: string | null; cou
 export interface Competition {
   id: number; name: string; country: string | null; type: string; gender: string; logo_url: string | null;
   is_enabled: boolean; data_quality_tier: string; is_demo: boolean;
+  eligibility_status?: "eligible" | "ineligible" | "unassessed"; eligibility_mode?: "auto" | "force_on" | "force_off";
+  eligibility_reason?: string | null; coverage_pct?: number | null;
 }
 export interface Fixture {
   id: number; provider: string; competition: Competition; home_team: Team; away_team: Team; kickoff_at: string;

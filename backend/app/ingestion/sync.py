@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import utcnow
@@ -79,3 +79,39 @@ def sync_window(db: Session, provider: FootballDataProvider, past_days: int, fut
     today = datetime.now(UTC).date()
     days = [today + timedelta(days=d) for d in range(-past_days, future_days + 1)]
     return sync_days(db, provider, days)
+
+
+def backfill_history(db: Session, provider: FootballDataProvider, days: int, chunk_days: int = 7, force: bool = False,
+                     progress=None) -> dict:
+    """Pull ``days`` of past fixtures (with event timelines for final matches), oldest first, in chunks.
+
+    Days that already have fully synchronised final fixtures from this provider are skipped unless ``force``
+    (so an interrupted backfill can simply be re-run). Provider rate limits apply via the adapter's client.
+    """
+    today = datetime.now(UTC).date()
+    all_days = [today - timedelta(days=d) for d in range(days, 0, -1)]
+    todo: list[date] = []
+    skipped = 0
+    for day in all_days:
+        start = datetime.combine(day, datetime.min.time(), UTC)
+        finals = db.scalar(
+            select(func.count(Fixture.id)).where(
+                Fixture.provider == provider.name, Fixture.kickoff_at >= start, Fixture.kickoff_at < start + timedelta(days=1),
+                Fixture.status.in_(list(FINAL_STATUSES)), Fixture.events_synced_at.isnot(None))) or 0
+        if finals and not force:
+            skipped += 1
+        else:
+            todo.append(day)
+    totals = {"days_requested": days, "days_skipped": skipped, "days_synced": 0, "fixtures_created": 0, "fixtures_updated": 0,
+              "events_replaced": 0, "errors": []}
+    for i in range(0, len(todo), chunk_days):
+        chunk = todo[i:i + chunk_days]
+        stats = sync_days(db, provider, chunk)
+        totals["days_synced"] += len(chunk)
+        for k in ("fixtures_created", "fixtures_updated", "events_replaced"):
+            totals[k] += getattr(stats, k)
+        totals["errors"].extend(stats.errors[:10])
+        if progress:
+            progress(chunk[-1], totals)
+    totals["errors"] = totals["errors"][:50]
+    return totals

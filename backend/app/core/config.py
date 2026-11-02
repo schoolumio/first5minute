@@ -17,7 +17,8 @@ DEV_SECRET = "dev-insecure-secret-change-me-0123456789abcdef"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # Later files win: backend/.env overrides the repo-root .env (docker-compose and the README use the root one).
+    model_config = SettingsConfigDict(env_file=("../.env", ".env"), env_file_encoding="utf-8", extra="ignore")
 
     # --- General -----------------------------------------------------------
     app_name: str = "Project Five"

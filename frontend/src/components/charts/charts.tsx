@@ -116,3 +116,38 @@ export function CalibrationChart({ bins }: {
     </ResponsiveContainer>
   );
 }
+
+export interface TrendPoint { period: string; n: number; hit_rate: number; mean_predicted: number; brier: number | null }
+
+/** Observed hit rate vs mean model estimate per period (same unit, one axis). Dots carry the per-period sample size in the tooltip. */
+export function TrendChart({ points }: { points: TrendPoint[] }) {
+  const data = points.map((p) => ({ ...p, label: new Date(p.period).toLocaleDateString(undefined, { day: "numeric", month: "short" }) }));
+  const lo = Math.max(0, Math.floor((Math.min(...points.map((p) => Math.min(p.hit_rate, p.mean_predicted))) - 0.03) * 20) / 20);
+  return (
+    <ResponsiveContainer width="100%" height={260}>
+      <ComposedChart data={data} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+        <CartesianGrid {...GRID} />
+        <XAxis dataKey="label" {...AXIS} />
+        <YAxis {...AXIS} domain={[lo, 1]} tickFormatter={(v) => `${Math.round(v * 100)}%`} />
+        <Tooltip
+          cursor={{ stroke: "#2a3d5c" }}
+          content={({ active, payload }) => {
+            const d = payload?.[0]?.payload as (TrendPoint & { label: string }) | undefined;
+            if (!active || !d) return null;
+            return (
+              <div className="rounded-[var(--radius-md)] border border-border-strong bg-surface-2 px-3 py-2 text-xs shadow-xl">
+                <p className="mb-1 font-semibold text-fg">Week of {d.label}</p>
+                <p className="text-muted">Model estimate <span className="tabular font-semibold text-fg">{(d.mean_predicted * 100).toFixed(1)}%</span></p>
+                <p className="text-muted">Observed hit rate <span className="tabular font-semibold text-fg">{(d.hit_rate * 100).toFixed(1)}%</span></p>
+                <p className="text-muted">Settled predictions <span className="tabular font-semibold text-fg">{d.n}</span></p>
+              </div>
+            );
+          }}
+        />
+        <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} iconType="plainline" />
+        <Line name="Model estimate" dataKey="mean_predicted" stroke={SERIES.home} strokeWidth={2} dot={{ r: 4, fill: SERIES.home, stroke: "#0b1424", strokeWidth: 2 }} isAnimationActive={false} />
+        <Line name="Observed hit rate" dataKey="hit_rate" stroke={SERIES.away} strokeWidth={2} dot={{ r: 4, fill: SERIES.away, stroke: "#0b1424", strokeWidth: 2 }} isAnimationActive={false} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}

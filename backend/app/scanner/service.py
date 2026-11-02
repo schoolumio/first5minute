@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import utcnow
 from app.core.logging import get_logger
 from app.engine.ml.serving import load_bundle
@@ -31,9 +32,11 @@ from app.models import (
     Notification,
     Prediction,
     PredictionOutcome,
+    SavedMatch,
     SyncRun,
-    User,
 )
+from app.scanner.eligibility import BLOCK_PREFIX, assess_competitions, eligibility_block
+from app.services.email import send_email
 from app.services.entitlements import users_with_feature
 from app.services.settings import default_rule_row, get_setting, rule_from_row
 
@@ -107,6 +110,8 @@ def run_scan(db: Session, now: datetime | None = None, notify: bool = True, repl
     db.flush()
 
     summary = ScanSummary()
+    if not replay:
+        assess_competitions(db, now)
     fixtures = db.scalars(
         select(Fixture)
         .join(Competition, Competition.id == Fixture.competition_id)
@@ -128,11 +133,16 @@ def run_scan(db: Session, now: datetime | None = None, notify: bool = True, repl
                     Prediction.fixture_id == fx.id, Prediction.market_code == market, Prediction.is_current.is_(True)
                 )
             )
-            if current and current.input_data_version == analysis.input_version and current.model_version_id == mv.id:
+            block = eligibility_block(fx.competition)
+            was_blocked = bool(current) and any(str(r).startswith(BLOCK_PREFIX) for r in current.category_reasons)
+            if (current and current.input_data_version == analysis.input_version and current.model_version_id == mv.id
+                    and was_blocked == bool(block)):
                 summary.unchanged += 1
                 summary.by_category[current.category] = summary.by_category.get(current.category, 0) + 1
                 continue
             category, reasons = categorize(analysis, market, thresholds)
+            if block:
+                category, reasons = "excluded", [block, *reasons]
             used_mv, probability = mv, analysis.probability(market)
             if mv.algorithm != "poisson_baseline":
                 try:
@@ -203,35 +213,73 @@ def _components(analysis, market: str) -> dict:
     return base
 
 
+def _market_label(code: str) -> str:
+    return "No goal" if code == Market.A else "Level score"
+
+
+def _safe_email(to: str, subject: str, body: str) -> None:
+    try:
+        send_email(to, subject, body)
+    except Exception as exc:  # noqa: BLE001 - a mail failure must never break scanning or settlement
+        log.warning("notification_email_failed", error=str(exc))
+
+
 def _notify_qualified(db: Session, prediction_ids: list[int]) -> None:
-    preds = db.scalars(select(Prediction).where(Prediction.id.in_(prediction_ids))).all()
+    preds = db.scalars(select(Prediction).where(Prediction.id.in_(prediction_ids)).order_by(Prediction.kickoff_at)).all()
     if not preds:
         return
-    recipients = users_with_feature(db, "notifications")
-    for user in recipients:
-        if not (user.notification_prefs or {}).get("scanner_qualified", True):
+    for user in users_with_feature(db, "notifications"):
+        prefs = user.notification_prefs or {}
+        if not prefs.get("scanner_qualified", True):
             continue
+        lines = []
         for p in preds:
             fx = p.fixture
-            db.add(
-                Notification(
-                    user_id=user.id,
-                    kind="scanner_match",
-                    title=f"Qualified: {fx.home_team.name} vs {fx.away_team.name}",
-                    body=(
-                        f"{'No goal' if p.market_code == Market.A else 'Level score'} at 5' - model estimate "
-                        f"{p.probability:.1%} ({p.model_version.calibration_status}). Kick-off "
-                        f"{fx.kickoff_at:%Y-%m-%d %H:%M} UTC." + (" [DEMO DATA]" if p.is_demo else "")
-                    ),
-                    link=f"/matches/{fx.id}",
-                )
-            )
+            text = (f"{_market_label(p.market_code)} at 5' - model estimate {p.probability:.1%} "
+                    f"({p.model_version.calibration_status}). Kick-off {fx.kickoff_at:%Y-%m-%d %H:%M} UTC."
+                    + (" [DEMO DATA]" if p.is_demo else ""))
+            db.add(Notification(user_id=user.id, kind="scanner_match", title=f"Qualified: {fx.home_team.name} vs {fx.away_team.name}",
+                                body=text, link=f"/matches/{fx.id}"))
+            lines.append(f"- {fx.home_team.name} vs {fx.away_team.name} ({fx.competition.name}): {text}")
+        if prefs.get("email"):
+            shown = "\n".join(lines[:10]) + (f"\n...and {len(lines) - 10} more" if len(lines) > 10 else "")
+            _safe_email(user.email, f"Project Five: {len(preds)} newly qualified match(es)",
+                        f"New matches qualified in the scanner:\n\n{shown}\n\nOpen the scanner: {get_settings().frontend_url}/scanner\n\n"
+                        "Estimates are statistical, not guarantees. 18+. Change email alerts in Account > Profile.")
+    db.flush()
+
+
+def _notify_settled(db: Session, settled: list[tuple[Prediction, PredictionOutcome]]) -> None:
+    """Tell users who saved a fixture how it settled (Pro+ feature, opt-in via preferences)."""
+    if not settled:
+        return
+    by_fixture: dict[int, list[tuple[Prediction, PredictionOutcome]]] = {}
+    for p, o in settled:
+        by_fixture.setdefault(p.fixture_id, []).append((p, o))
+    saved = db.scalars(select(SavedMatch).where(SavedMatch.fixture_id.in_(list(by_fixture)))).all()
+    eligible = {u.id: u for u in users_with_feature(db, "notifications")}
+    labels = {"won": "correct", "lost": "incorrect", "void": "void", "unresolved": "unresolved"}
+    for sm in saved:
+        user = eligible.get(sm.user_id)
+        if user is None or not (user.notification_prefs or {}).get("prediction_settled", False):
+            continue
+        fx = sm.fixture
+        parts = [f"{_market_label(p.market_code)}: {labels.get(o.result, o.result)} (estimate {p.probability:.1%})"
+                 for p, o in by_fixture[fx.id]]
+        cut = next((o for _, o in by_fixture[fx.id] if o.home_score_at_cutoff is not None), None)
+        score = f" Score at 5': {cut.home_score_at_cutoff}-{cut.away_score_at_cutoff}." if cut else ""
+        body = "; ".join(parts) + "." + score
+        db.add(Notification(user_id=user.id, kind="prediction_settled", title=f"Settled: {fx.home_team.name} vs {fx.away_team.name}",
+                            body=body, link=f"/matches/{fx.id}"))
+        if (user.notification_prefs or {}).get("email"):
+            _safe_email(user.email, f"Project Five: {fx.home_team.name} vs {fx.away_team.name} settled", body)
     db.flush()
 
 
 def settle_predictions(db: Session) -> dict:
     """Settle (or re-settle after provider corrections) current-or-past predictions."""
     stats = {"settled": 0, "resettled": 0, "pending": 0}
+    newly: list[tuple[Prediction, PredictionOutcome]] = []
     rule_cache: dict[int, object] = {}
     from app.models import SettlementRule
 
@@ -256,16 +304,16 @@ def settle_predictions(db: Session) -> dict:
             stats["pending"] += 1
             continue
         if p.outcome is None:
-            db.add(
-                PredictionOutcome(
-                    prediction_id=p.id,
-                    result=result.value,
-                    home_score_at_cutoff=score.home if score else None,
-                    away_score_at_cutoff=score.away if score else None,
-                    source_data_version=fx.data_version,
-                    notes=note,
-                )
+            outcome = PredictionOutcome(
+                prediction_id=p.id,
+                result=result.value,
+                home_score_at_cutoff=score.home if score else None,
+                away_score_at_cutoff=score.away if score else None,
+                source_data_version=fx.data_version,
+                notes=note,
             )
+            db.add(outcome)
+            newly.append((p, outcome))
             stats["settled"] += 1
         else:
             o = p.outcome
@@ -276,8 +324,5 @@ def settle_predictions(db: Session) -> dict:
             o.settled_at = utcnow()
             stats["resettled"] += 1
     db.flush()
+    _notify_settled(db, newly)
     return stats
-
-
-def user_ids(users: list[User]) -> list[int]:
-    return [u.id for u in users]

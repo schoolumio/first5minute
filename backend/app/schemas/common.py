@@ -13,6 +13,8 @@ def team_out(t: Team) -> dict:
 def competition_out(c: Competition) -> dict:
     return {"id": c.id, "name": c.name, "country": c.country, "type": c.type, "gender": c.gender,
             "logo_url": c.logo_url, "is_enabled": c.is_enabled, "data_quality_tier": c.data_quality_tier,
+            "eligibility_status": c.eligibility_status, "eligibility_mode": c.eligibility_mode,
+            "eligibility_reason": c.eligibility_reason, "coverage_pct": c.coverage_pct,
             "is_demo": c.is_demo}
 
 

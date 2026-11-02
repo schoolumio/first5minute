@@ -64,6 +64,9 @@ export function PredictionCard({ p, threshold, saved: initialSaved = false }: { 
           )}
         </div>
       </div>
+      {p.category === "excluded" && p.category_reasons[0] && (
+        <p className="mt-3 rounded-[var(--radius-sm)] border border-danger/30 bg-danger/5 px-2.5 py-1.5 text-xs text-danger">{p.category_reasons[0]}</p>
+      )}
       <ProbabilityBar value={p.probability} threshold={threshold} className="mt-3" />
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
         <span>Confidence <span className={cn("font-semibold capitalize", p.confidence === "high" ? "text-brand-400" : p.confidence === "medium" ? "text-info" : "text-warn")}>{p.confidence}</span></span>

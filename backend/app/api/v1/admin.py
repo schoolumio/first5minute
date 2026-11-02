@@ -146,7 +146,7 @@ def update_plan(code: str, body: PlanUpdateIn, request: Request, admin: User = D
 # --- competitions --------------------------------------------------------------
 class CompetitionUpdateIn(BaseModel):
     is_enabled: bool | None = None
-    data_quality_tier: str | None = Field(default=None, pattern="^(high|medium|low|unknown)$")
+    eligibility_mode: str | None = Field(default=None, pattern="^(auto|force_on|force_off)$")
 
 
 @router.get("/competitions")
@@ -159,6 +159,16 @@ def admin_competitions(db: Session = Depends(get_db)) -> list[dict]:
     ).all()
     return [{**competition_out(c), "fixtures": n, "finished": fin,
              "timeline_coverage": round(ok / fin, 4) if fin else None} for c, n, fin, ok in rows]
+
+
+@router.post("/competitions/assess")
+def assess_now(request: Request, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict:
+    from app.scanner.eligibility import assess_competitions
+
+    result = assess_competitions(db)
+    audit(db, "admin.competitions_assessed", admin.id, "competition", None, {"count": len(result)}, client_ip(request))
+    db.commit()
+    return {"assessed": len(result), "ineligible": sum(1 for r in result if r["status"] == "ineligible")}
 
 
 @router.patch("/competitions/{competition_id}")
@@ -365,6 +375,19 @@ class ThresholdMarket(BaseModel):
     watchlist_min_probability: float = Field(ge=0.5, le=0.999)
 
 
+class EligibilityTier(BaseModel):
+    min_finished: int = Field(ge=1, le=100000)
+    min_coverage: float = Field(ge=0, le=1)
+
+
+class EligibilityIn(BaseModel):
+    lookback_days: int = Field(ge=30, le=1825)
+    min_finished: int = Field(ge=1, le=100000)
+    min_coverage: float = Field(ge=0, le=1)
+    high: EligibilityTier
+    medium: EligibilityTier
+
+
 class ThresholdsIn(BaseModel):
     MARKET_A: ThresholdMarket
     MARKET_B: ThresholdMarket
@@ -387,7 +410,12 @@ class FlagsIn(BaseModel):
     maintenance_mode: bool
 
 
-SETTINGS_SCHEMAS = {"scanner.thresholds": ThresholdsIn, "model.baseline": ModelParamsIn, "platform.flags": FlagsIn}
+SETTINGS_SCHEMAS = {
+    "scanner.thresholds": ThresholdsIn,
+    "scanner.eligibility": EligibilityIn,
+    "model.baseline": ModelParamsIn,
+    "platform.flags": FlagsIn,
+}
 
 
 @router.get("/settings")

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Activity, CalendarDays, CheckCircle2, Eye, Radar, RefreshCw } from "lucide-react";
 import { useState } from "react";
+import { TrendChart, type TrendPoint } from "@/components/charts/charts";
 import { PageHeader } from "@/components/layout/app-shell";
 import { OutcomeBadge, PredictionCard } from "@/components/match/prediction-row";
 import { Badge, DemoBadge } from "@/components/ui/badge";
@@ -42,6 +43,42 @@ function MarketPanel({ market }: { market: Market }) {
         </p>
       )}
     </>
+  );
+}
+
+function TrendCard() {
+  const [market, setMarket] = useState<Market>("MARKET_A");
+  const [table, setTable] = useState(false);
+  const { data, loading } = useApi<{ points: TrendPoint[]; capped_by_plan: boolean; is_demo: boolean; days: number; note: string }>(
+    "/predictions/performance/trend", { market, days: 90, bucket: "week" });
+  return (
+    <Card className="mt-6">
+      <CardHeader
+        title="Model performance over time"
+        description={`Weekly observed hit rate vs mean estimate · last ${data?.days ?? 90} days`}
+        action={<div className="flex items-center gap-2">{data?.is_demo && <DemoBadge />}<Tabs value={market} onChange={setMarket} options={[{ value: "MARKET_A", label: "Market A" }, { value: "MARKET_B", label: "Market B" }]} /></div>}
+      />
+      <CardBody>
+        {loading ? <Skeleton className="h-64" /> : !data || data.points.length < 2 ? (
+          <EmptyState icon={Activity} title="Not enough settled predictions for a trend yet">A trend needs at least two weeks with settled matches.</EmptyState>
+        ) : (
+          <>
+            <TrendChart points={data.points} />
+            <div className="mt-2 flex items-center justify-between text-xs text-subtle">
+              <span>{data.note}</span>
+              <button className="cursor-pointer text-brand-400 hover:underline" onClick={() => setTable(!table)}>{table ? "Hide" : "View as"} table</button>
+            </div>
+            {table && (
+              <Table className="mt-3">
+                <thead><tr><Th>Week of</Th><Th className="text-right">Settled</Th><Th className="text-right">Estimate</Th><Th className="text-right">Hit rate</Th><Th className="text-right">Brier</Th></tr></thead>
+                <tbody>{data.points.map((p) => <tr key={p.period}><Td>{p.period}</Td><Td className="tabular text-right">{p.n}</Td><Td className="tabular text-right">{pct(p.mean_predicted)}</Td><Td className="tabular text-right">{pct(p.hit_rate)}</Td><Td className="tabular text-right">{num(p.brier)}</Td></tr>)}</tbody>
+              </Table>
+            )}
+            {data.capped_by_plan && <p className="mt-3 text-xs text-muted">Free plan shows 30 days. <Link href="/pricing" className="text-brand-400 hover:underline">Upgrade</Link> for up to two years of history.</p>}
+          </>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
@@ -136,6 +173,8 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      <TrendCard />
 
       <Card className="mt-6">
         <CardHeader title="Recent qualified predictions" description="Settled at the five-minute cutoff" action={<Link href="/predictions" className="text-xs text-brand-400 hover:underline">View all</Link>} />
