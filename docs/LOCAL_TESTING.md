@@ -210,7 +210,7 @@ Expected numbers come from a fresh seed; yours may differ by a few.
 
 ```bash
 cd backend && source .venv/bin/activate
-pytest                 # 152 tests, ~90 s, uses the projectfive_test database
+pytest                 # 159 tests, ~90 s, uses the projectfive_test database
 ruff check .
 ```
 
@@ -241,35 +241,41 @@ request) and only for the leagues you list, so a few leagues fit; a large backfi
 where it stopped**). Paid plans have far higher limits. The adapter was written from the provider documentation and has only been tested
 against mock responses - the `provider-check` step below tells you whether real payloads parse correctly **before** you spend quota.
 
+**Which plan do you have?** API-Football's **free plan** allows 100 requests/day and usually only *older seasons* (not the current one);
+paid plans allow the current season and far more requests. You do not have to guess - the commands below tell you.
+
 **Windows (cmd), in Command Prompt A with the venv active (`.venv\Scripts\activate`) inside `backend`:**
 
-1. Get a key at https://dashboard.api-football.com and edit `.env` (`notepad ..\.env`):
+1. Get a key at https://dashboard.api-football.com and put it in `.env` (copy `.env.example` to `.env` first, then `notepad ..\.env`):
    ```
    FOOTBALL_PROVIDER=api_football
    API_FOOTBALL_KEY=your-key-here
    API_FOOTBALL_REQUESTS_PER_MINUTE=10
+   FOOTBALL_LEAGUE_IDS=39
    ODDS_PROVIDER=none
    ```
-2. Stop the API (Ctrl+C), then find league ids (one request per search) and add them to `.env` as `FOOTBALL_LEAGUE_IDS=39,140`:
+2. Find league ids (1 request): `python -m app.cli leagues --search premier`  (39 = England Premier League).
+3. Remove the demo data: `python -m app.cli reset-demo`
+4. **Probe one league-season (2 requests)** - shows whether your plan allows it and whether the goal timelines are usable:
    ```bat
-   python -m app.cli leagues --search premier
-   python -m app.cli leagues --search liga
+   python -m app.cli provider-check --league 39 --season 2023
    ```
-3. Remove the demo data and run the safety check (about 6 requests):
+   Look for `"verdict": "OK: ..."`, `timeline_reconciles_with_score: true`, and `estimated_requests_to_download`.
+   *(Season = the year it starts: 2023 means 2023/24.)* If the message mentions your plan, try an older year (2022, 2021).
+5. **Download whole seasons (about 20 requests each; resumable - if the daily limit is hit, run the same command again later):**
    ```bat
-   python -m app.cli reset-demo
-   python -m app.cli provider-check
+   python -m app.cli backfill-season --league 39 --season 2022 2023
    ```
-   Look for `"verdict": "OK: ..."`, `timeline_reconciles_with_score: true`, and a plausible `score_at_5_minutes`.
-4. Backfill history (resumable; stops with a clear message if the daily quota is reached - run the same command again later):
+6. **Real accuracy numbers.** Walk-forward evaluation of the baseline on the downloaded matches (predicts each match using only
+   earlier matches), then the advanced-model comparison:
    ```bat
-   python -m app.cli backfill --days 120
-   python -m app.cli sync
-   python -m app.cli scan
-   python -m app.cli settle
+   python -m app.cli backtest --from 2023-09-01 --to 2024-05-31
+   python -m app.cli train
    ```
-5. Start the API (`uvicorn app.main:app --reload --port 8000`) and use the app: the banner now says live data. *Admin -> Providers & sync*
-   shows requests, errors and the league list; *Admin -> Competitions* shows timeline coverage per league.
+7. **Current season (paid plans only):** `python -m app.cli backfill-season --league 39 --season 2026`, then `python -m app.cli sync`,
+   `scan`, `settle`. The scanner only shows matches that have **not kicked off yet**, so with historical seasons only, the scanner is
+   empty by design - review results in *Admin -> Models*, *Admin -> Competitions* and the `backtest` output.
+8. Start the API (`uvicorn app.main:app --reload --port 8000`) and the website as before.
 
 What to expect: teams need at least 5 (watchlist) to 10 (qualified) matches with reliable event timelines, so a 120-day backfill of a
 top league is the minimum. Real five-minute no-goal probabilities are about 85-90 %, so few matches reach the default 90 % qualified

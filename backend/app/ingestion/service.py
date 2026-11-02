@@ -60,6 +60,7 @@ class IngestStats:
     skipped: int = 0
     filtered_out: int = 0
     quota_exhausted: bool = False
+    plan_limited: bool = False
     errors: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:

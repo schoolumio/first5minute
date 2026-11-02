@@ -18,6 +18,7 @@ from app.providers.football.base import (
     LeagueScopeError,
     NormalizedFixture,
     ProviderError,
+    ProviderPlanLimit,
     ProviderQuotaExceeded,
 )
 from app.services.settings import default_rule_row, rule_from_row
@@ -74,6 +75,10 @@ def sync_days(db: Session, provider: FootballDataProvider, days: list[date], wit
                 ing.stats.quota_exhausted = True
                 ing.stats.errors.append(str(exc))
                 break
+            except ProviderPlanLimit as exc:
+                ing.stats.plan_limited = True
+                ing.stats.errors.append(str(exc))
+                break
             kept = [nf for nf in fixtures if allow is None or nf.competition.provider_id in allow]
             ing.stats.filtered_out += len(fixtures) - len(kept)
             detailed: dict[str, NormalizedFixture] = {}
@@ -87,6 +92,10 @@ def sync_days(db: Session, provider: FootballDataProvider, days: list[date], wit
                         ing.stats.quota_exhausted = True
                         ing.stats.errors.append(str(exc))
                         break
+                    except ProviderPlanLimit as exc:
+                        ing.stats.plan_limited = True
+                        ing.stats.errors.append(str(exc))
+                        break
                     except ProviderError as exc:
                         ing.stats.errors.append(f"events {','.join(chunk[:3])}...: {exc}")
             for nf in kept:
@@ -96,9 +105,10 @@ def sync_days(db: Session, provider: FootballDataProvider, days: list[date], wit
                 except (ProviderError, ValueError) as exc:
                     ing.stats.errors.append(f"{nf.provider_id}: {exc}")
             db.commit()
-            if ing.stats.quota_exhausted:
+            if ing.stats.quota_exhausted or ing.stats.plan_limited:
                 break
-        run.status = "quota_hit" if ing.stats.quota_exhausted else ("success" if not ing.stats.errors else "partial")
+        stopped = ing.stats.quota_exhausted or ing.stats.plan_limited
+        run.status = "quota_hit" if stopped else ("success" if not ing.stats.errors else "partial")
     except ProviderError as exc:
         db.rollback()
         run = db.merge(run)
@@ -169,9 +179,79 @@ def backfill_history(db: Session, provider: FootballDataProvider, days: int, chu
         totals["errors"].extend(stats.errors[:10])
         if progress:
             progress(chunk[-1], totals)
+        if stats.plan_limited:
+            totals["stopped_reason"] = stats.errors[0] if stats.errors else "your provider plan does not include this date range"
+            break
         if stats.quota_exhausted:
             totals["stopped_reason"] = ("provider request limit reached - progress is saved; run the same command again "
                                         "after your quota resets (it resumes where it stopped)")
             break
     totals["errors"] = totals["errors"][:50]
     return totals
+
+
+def sync_league_season(db: Session, provider: FootballDataProvider, league_id: str, season: int, progress=None) -> dict:
+    """Download one whole league-season: ONE request for the fixture list, then match timelines in bulk (20 per request).
+
+    A 20-team league-season is roughly 1 + 19 requests. Progress is committed after every bulk batch, and fixtures that already
+    have a reconciled timeline are skipped, so an interrupted run (quota, network, plan limit) simply resumes when re-run.
+    """
+    run = SyncRun(job="sync_season", provider=provider.name, status="running")
+    db.add(run)
+    db.commit()
+    ing = _ingestor(db, provider)
+    out: dict = {"league": league_id, "season": season, "fixtures": 0, "finished": 0, "timelines_fetched": 0, "timelines_missing": 0,
+                 "stopped_reason": None, "errors": []}
+    try:
+        fixtures = [nf for nf in provider.fixtures_by_league_season(league_id, season)]
+        out["fixtures"] = len(fixtures)
+        for nf in fixtures:           # statuses, scores and schedule first (cheap, no extra requests)
+            try:
+                with db.begin_nested():
+                    ing.ingest_fixture(nf)
+            except (ProviderError, ValueError) as exc:
+                out["errors"].append(f"{nf.provider_id}: {exc}")
+        db.commit()
+        finals = [nf.provider_id for nf in fixtures if nf.status in FINAL_STATUSES or nf.status == "abandoned"]
+        out["finished"] = len(finals)
+        done = set(db.scalars(select(Fixture.provider_id).where(
+            Fixture.provider == provider.name, Fixture.provider_id.in_(finals or [""]), Fixture.timeline_status == "complete")))
+        need = [i for i in finals if i not in done]
+        for chunk in _batches(need, provider.events_batch_size):
+            try:
+                for d in provider.fixtures_with_events(chunk):
+                    try:
+                        with db.begin_nested():
+                            ing.ingest_fixture(d)
+                        out["timelines_fetched"] += 1
+                    except (ProviderError, ValueError) as exc:
+                        out["errors"].append(f"{d.provider_id}: {exc}")
+                db.commit()
+            except ProviderQuotaExceeded:
+                out["stopped_reason"] = ("provider request limit reached - progress is saved; run the same command again after "
+                                         "your quota resets (it resumes where it stopped)")
+                break
+            except ProviderPlanLimit as exc:
+                out["stopped_reason"] = str(exc)
+                break
+            except ProviderError as exc:
+                out["errors"].append(f"events batch {chunk[0]}...: {exc}")
+            if progress:
+                progress(out)
+        out["timelines_missing"] = db.scalar(select(func.count(Fixture.id)).where(
+            Fixture.provider == provider.name, Fixture.provider_id.in_(finals or [""]), Fixture.timeline_status != "complete")) or 0
+        run.status = "quota_hit" if out["stopped_reason"] else ("success" if not out["errors"] else "partial")
+    except ProviderPlanLimit as exc:
+        db.rollback()
+        run = db.merge(run)
+        run.status, run.error = "failed", str(exc)
+        out["stopped_reason"] = str(exc)
+    except ProviderQuotaExceeded:
+        db.rollback()
+        run = db.merge(run)
+        run.status = "quota_hit"
+        out["stopped_reason"] = "provider request limit reached - run the same command again after your quota resets"
+    run.finished_at, run.stats = utcnow(), {**out, "errors": out["errors"][:50]}
+    db.commit()
+    out["errors"] = out["errors"][:50]
+    return out

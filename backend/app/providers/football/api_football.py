@@ -131,7 +131,13 @@ class ApiFootballProvider(b.FootballDataProvider):
         errors = data.get("errors")
         if errors and (isinstance(errors, dict) and errors or isinstance(errors, list) and len(errors)):
             text = str(errors)
-            if (isinstance(errors, dict) and "requests" in errors) or "request limit" in text.lower():
+            low = text.lower()
+            if (isinstance(errors, dict) and "plan" in errors) or "do not have access" in low or "free plans" in low:
+                raise b.ProviderPlanLimit(
+                    f"Your API-Football plan does not include this data: {text}. Free plans are usually limited to older seasons and a "
+                    "short date window - check your plan at dashboard.api-football.com, or use an older season "
+                    "(python -m app.cli backfill-season --league <id> --season <year>).")
+            if (isinstance(errors, dict) and "requests" in errors) or "request limit" in low:
                 raise b.ProviderQuotaExceeded(f"api_football request limit reached: {errors}")
             raise b.ProviderError(f"api_football error: {errors}")
         return data.get("response") or []
@@ -154,6 +160,11 @@ class ApiFootballProvider(b.FootballDataProvider):
             data = self.client.get("/fixtures", {"ids": "-".join(chunk)}, "fixtures_with_events_batch")
             out.extend(parse_fixture(item, include_events=True) for item in self._response(data))
         return out
+
+    def fixtures_by_league_season(self, league_id: str, season: int) -> list[b.NormalizedFixture]:
+        """The whole league-season in ONE request (e.g. ~380 fixtures for a 20-team league)."""
+        data = self.client.get("/fixtures", {"league": league_id, "season": season, "timezone": "UTC"}, "fixtures_by_league_season")
+        return [parse_fixture(i, include_events=False) for i in self._response(data)]
 
     def search_leagues(self, query: str) -> list[dict]:
         data = self.client.get("/leagues", {"search": query}, "search_leagues")

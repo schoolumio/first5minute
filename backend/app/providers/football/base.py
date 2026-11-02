@@ -105,6 +105,10 @@ class ProviderQuotaExceeded(ProviderError):
     """The provider's daily/monthly request allowance is used up. Work is resumable: try again after the reset."""
 
 
+class ProviderPlanLimit(ProviderError):
+    """The provider plan does not include the requested date range / season (e.g. a free plan asking for the current season)."""
+
+
 class LeagueScopeError(ProviderError):
     """A real provider is active but no league allowlist is configured (would sync every competition worldwide)."""
 
@@ -128,6 +132,10 @@ class FootballDataProvider(abc.ABC):
     def fixtures_with_events(self, provider_fixture_ids: list[str]) -> list[NormalizedFixture]:
         """Fixtures including timelines for several ids. Adapters with a bulk endpoint override this to save requests."""
         return [self.fixture_with_events(i) for i in provider_fixture_ids]
+
+    def fixtures_by_league_season(self, league_id: str, season: int) -> list[NormalizedFixture]:
+        """Every fixture of one league-season in a single request (listing only, no events)."""
+        raise NotImplementedError(f"{self.name} does not support season downloads")
 
     def search_leagues(self, query: str) -> list[dict[str, Any]]:
         raise NotImplementedError(f"{self.name} does not support league search")

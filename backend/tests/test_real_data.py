@@ -238,3 +238,157 @@ def test_admin_providers_exposes_league_scope(client, user_factory):
     login(client, "scope-admin@example.com")
     scope = client.get("/api/v1/admin/providers").json()["league_scope"]
     assert scope["required"] is False and scope["league_ids"] == [] and "allow_all" in scope
+
+
+# ================================================================== season download, plan limits, diagnostics
+from app.ingestion.sync import sync_league_season  # noqa: E402
+from app.providers.football.base import ProviderPlanLimit  # noqa: E402
+
+
+class SeasonFake(FakeFootball):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.season_calls: list[tuple[str, int]] = []
+        self.plan_limit_on_season = False
+        self.plan_limit_on_events = False
+
+    def add_upcoming(self, day: date, idx: int):
+        ko = datetime(day.year, day.month, day.day, 15, tzinfo=UTC)
+        fid = f"up-{day.isoformat()}-{idx}"
+        self.detail[fid] = f.upcoming(fid, 1 + idx % 5, 2 + idx % 4 + (1 if idx % 4 == 0 else 0), ko)
+        return fid
+
+    def fixtures_by_league_season(self, league_id, season):
+        self.season_calls.append((league_id, season))
+        if self.plan_limit_on_season:
+            raise ProviderPlanLimit("Free plans do not have access to this season")
+        return [dataclasses.replace(v, events=None) for v in self.detail.values() if v.competition.provider_id == league_id]
+
+    def fixtures_with_events(self, ids):
+        if self.plan_limit_on_events:
+            raise ProviderPlanLimit("plan does not include events")
+        return super().fixtures_with_events(ids)
+
+
+def _season(p: SeasonFake, n_finished=7, n_upcoming=2):
+    for i in range(n_finished):
+        p.add(TODAY - timedelta(days=60 - i), i)
+    for i in range(n_upcoming):
+        p.add_upcoming(TODAY + timedelta(days=1 + i), i)
+
+
+def test_season_download_is_one_listing_request_plus_bulk_timelines(db):
+    p = SeasonFake()
+    _season(p)
+    out = sync_league_season(db, p, "mock-l1", 2026)
+    assert p.season_calls == [("mock-l1", 2026)]
+    assert [len(c) for c in p.batch_calls] == [3, 3, 1]                                     # 3 bulk requests for 7 timelines
+    assert out["fixtures"] == 9 and out["finished"] == 7 and out["timelines_fetched"] == 7 and out["timelines_missing"] == 0
+    assert out["stopped_reason"] is None and not out["errors"]
+    rows = db.scalars(select(Fixture)).all()
+    assert len(rows) == 9 and sum(1 for r in rows if r.status == "scheduled") == 2           # upcoming fixtures are stored too
+    assert db.scalar(select(SyncRun.status).where(SyncRun.job == "sync_season")) == "success"
+
+
+def test_season_download_resumes_after_quota_and_skips_finished_work(db):
+    p = SeasonFake(quota_after_batches=1)
+    _season(p)
+    first = sync_league_season(db, p, "mock-l1", 2026)
+    assert "run the same command again" in first["stopped_reason"] and 0 < first["timelines_fetched"] < 7
+    assert first["timelines_missing"] == 7 - first["timelines_fetched"]
+    p.quota_after_batches = None
+    p.batch_calls.clear()
+    second = sync_league_season(db, p, "mock-l1", 2026)
+    assert second["stopped_reason"] is None and second["timelines_missing"] == 0
+    assert sum(len(c) for c in p.batch_calls) == 7 - first["timelines_fetched"]              # only the missing ones were fetched
+    p.batch_calls.clear()
+    third = sync_league_season(db, p, "mock-l1", 2026)
+    assert p.batch_calls == [] and third["timelines_fetched"] == 0                           # nothing left to do: no wasted requests
+
+
+def test_season_download_reports_plan_limits_clearly(db):
+    p = SeasonFake()
+    _season(p)
+    p.plan_limit_on_season = True
+    out = sync_league_season(db, p, "mock-l1", 2026)
+    assert "Free plans" in out["stopped_reason"] and out["fixtures"] == 0
+    assert db.scalar(select(SyncRun.status).where(SyncRun.job == "sync_season")) == "failed"
+    p.plan_limit_on_season, p.plan_limit_on_events = False, True
+    out2 = sync_league_season(db, p, "mock-l1", 2026)
+    assert out2["stopped_reason"] == "plan does not include events" and out2["fixtures"] == 9      # schedule saved, timelines not
+
+
+def test_api_football_plan_errors_and_season_request():
+    seen = []
+
+    def handler(request):
+        seen.append(dict(request.url.params))
+        if request.url.params.get("season") == "2026":
+            return httpx.Response(200, json={"errors": {"plan": "Free plans do not have access to this season, try from 2022 to 2024."},
+                                             "response": []})
+        return httpx.Response(200, json={"errors": [], "response": [_item(1), _item(2)]})
+
+    prov = api_football.ApiFootballProvider(client=_client(handler))
+    ok = prov.fixtures_by_league_season("39", 2023)
+    assert len(ok) == 2 and seen[-1]["league"] == "39" and seen[-1]["season"] == "2023"
+    with pytest.raises(ProviderPlanLimit) as e:
+        prov.fixtures_by_league_season("39", 2026)
+    assert "check your plan" in str(e.value) and "backfill-season" in str(e.value) and not isinstance(e.value, ProviderQuotaExceeded)
+    date_err = {"errors": {"plan": "Free plans do not have access to this date, try from 2026-11-01 to 2026-11-03."}, "response": []}
+    prov2 = api_football.ApiFootballProvider(client=_client(lambda r: httpx.Response(200, json=date_err)))
+    with pytest.raises(ProviderPlanLimit):
+        prov2.fixtures_by_date(date(2026, 1, 1))
+
+
+def test_day_sync_and_backfill_stop_on_plan_limit_without_wasting_requests(db):
+    class Limited(SeasonFake):
+        def fixtures_by_date(self, day):
+            self.day_calls.append(day)
+            raise ProviderPlanLimit("Free plans do not have access to this date")
+
+    p = Limited()
+    out = backfill_history(db, p, days=10, chunk_days=2)
+    assert "Free plans" in out["stopped_reason"] and len(p.day_calls) == 1                  # stopped after the FIRST refused request
+    stats = sync_days(db, Limited(), [TODAY], league_ids=None)
+    assert stats.plan_limited and not stats.quota_exhausted
+
+
+def test_diagnostics_report_errors_instead_of_crashing_and_probe_a_season():
+    class AllRefused(SeasonFake):
+        def fixtures_by_date(self, day):
+            raise ProviderPlanLimit("Free plans do not have access to this date")
+
+    r = check_provider(AllRefused(), TODAY, {"mock-l1"})
+    assert all("error" in d for d in r["days"]) and "older season" in r["verdict"] and "--season" in r["verdict"]
+    one = SeasonFake()
+    day = TODAY - timedelta(days=30)
+    one.add(day, 0, minute=3)
+    r2 = check_provider(one, TODAY, {"mock-l1"}, only_day=day)
+    assert len(r2["days"]) == 1 and r2["sample_fixture"]["score_at_5_minutes"] == "1-0" and r2["verdict"].startswith("OK")
+    from app.ingestion.diagnostics import check_season
+
+    s = SeasonFake()
+    _season(s, n_finished=7, n_upcoming=1)
+    rep = check_season(s, "mock-l1", 2023)
+    assert rep["fixtures_in_season"] == 8 and rep["finished"] == 7 and rep["estimated_requests_to_download"] == 1 + 3
+    assert rep["verdict"].startswith("OK")
+    s.plan_limit_on_season = True
+    assert "Request refused" in check_season(s, "mock-l1", 2026)["verdict"]
+
+
+def test_backtest_job_accepts_a_historical_window(db):
+    from datetime import timedelta as td
+
+    from app.engine.settlement import Rule
+    from app.ingestion.service import Ingestor
+    from app.workers.jobs import job_backtest
+
+    old = datetime.now(UTC) - td(days=400)
+    ing = Ingestor(db, "mock", False, Rule())
+    for nf in f.season_history(old, n_teams=6, rounds=14):
+        ing.ingest_fixture(nf)
+    db.commit()
+    recent_only = job_backtest(db, days=60)
+    assert recent_only["MARKET_A"]["sample_size"] == 0                                       # nothing in the last 60 days
+    hist = job_backtest(db, start=old - td(days=1), end=old + td(days=60))
+    assert hist["MARKET_A"]["sample_size"] > 0 and hist["is_demo"] is False and len(hist["window"]) == 2

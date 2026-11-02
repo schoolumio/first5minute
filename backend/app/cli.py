@@ -118,11 +118,21 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--reset", action="store_true")
     s.add_argument("--replay-days", type=int, default=14)
     sub.add_parser("reset-demo")
-    for job in ("sync", "scan", "settle", "backtest", "odds", "expire"):
+    for job in ("sync", "scan", "settle", "odds", "expire"):
         sub.add_parser(job)
     lg = sub.add_parser("leagues", help="search the provider's leagues by name to find ids for FOOTBALL_LEAGUE_IDS")
     lg.add_argument("--search", required=True, help="at least 3 characters, e.g. premier")
-    sub.add_parser("provider-check", help="cheap read-only check: provider health + one real fixture timeline (run before backfill)")
+    pc = sub.add_parser("provider-check", help="cheap read-only check: provider health + one real fixture timeline (run before backfill)")
+    pc.add_argument("--date", help="probe one specific date, YYYY-MM-DD")
+    pc.add_argument("--league", help="with --season: probe a whole league-season (2 requests)")
+    pc.add_argument("--season", type=int, help="season start year, e.g. 2023 for 2023/24")
+    bs = sub.add_parser("backfill-season", help="download whole league-seasons (about 20 requests each); resumable")
+    bs.add_argument("--league", required=True, help="provider league id, e.g. 39")
+    bs.add_argument("--season", type=int, nargs="+", required=True, help="season start year(s), e.g. 2022 2023")
+    bt = sub.add_parser("backtest", help="walk-forward evaluation of the baseline on finished matches")
+    bt.add_argument("--days", type=int, default=120)
+    bt.add_argument("--from", dest="start", help="window start, YYYY-MM-DD (use with --to for historical seasons)")
+    bt.add_argument("--to", dest="end", help="window end, YYYY-MM-DD")
     b = sub.add_parser("backfill", help="pull past fixtures + event timelines from the configured provider (resumable)")
     b.add_argument("--days", type=int, default=90)
     b.add_argument("--force", action="store_true", help="re-fetch days that were already synchronised")
@@ -158,18 +168,53 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "provider-check":
         from datetime import date
 
-        from app.ingestion.diagnostics import check_provider
-        from app.ingestion.sync import league_scope
+        from app.ingestion.diagnostics import check_provider, check_season
         from app.providers.football.base import LeagueScopeError
         from app.providers.football.registry import get_provider
 
         with SessionLocal() as db:
             provider = get_provider(db)
-            try:
-                allow = league_scope(provider)
-            except LeagueScopeError as exc:
-                sys.exit(str(exc))
-            print(json.dumps(check_provider(provider, date.today(), allow), indent=2, default=str))
+            if args.league and args.season:
+                print(json.dumps(check_season(provider, args.league, args.season), indent=2, default=str))
+            else:
+                from app.ingestion.sync import league_scope
+
+                try:
+                    allow = league_scope(provider)
+                except LeagueScopeError as exc:
+                    sys.exit(str(exc))
+                only = date.fromisoformat(args.date) if args.date else None
+                print(json.dumps(check_provider(provider, date.today(), allow, only_day=only), indent=2, default=str))
+    elif args.cmd == "backfill-season":
+        from app.ingestion.sync import sync_league_season
+        from app.providers.football.registry import get_provider
+
+        with SessionLocal() as db:
+            provider = get_provider(db)
+            for season in args.season:
+                print(f"Downloading league {args.league}, season {season} ...")
+
+                def show(o):
+                    print(f"  timelines fetched: {o['timelines_fetched']} / {o['finished']} finished matches")
+
+                try:
+                    out = sync_league_season(db, provider, args.league, season, progress=show)
+                except NotImplementedError as exc:
+                    sys.exit(str(exc))
+                print(json.dumps(out, indent=2, default=str))
+                if out["stopped_reason"]:
+                    print(f"\nSTOPPED: {out['stopped_reason']}")
+                    break
+    elif args.cmd == "backtest":
+        from datetime import datetime as dt
+
+        from app.workers.jobs import job_backtest
+
+        def to_dt(v):
+            return dt.fromisoformat(v).replace(tzinfo=UTC) if v else None
+
+        with SessionLocal() as db:
+            print(json.dumps(job_backtest(db, args.days, to_dt(args.start), to_dt(args.end)), indent=2, default=str))
     elif args.cmd == "backfill":
         from app.ingestion.sync import backfill_history
         from app.providers.football.base import LeagueScopeError

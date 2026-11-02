@@ -42,13 +42,15 @@ def job_settle(db: Session) -> dict:
     return stats
 
 
-def job_backtest(db: Session, days: int = 120) -> dict:
+def job_backtest(db: Session, days: int = 120, start=None, end=None) -> dict:
     models = ensure_model_versions(db)
-    end = utcnow()
-    report = walk_forward(db, end - timedelta(days=days), end, persist_for=models)
+    end = end or utcnow()
+    start = start or end - timedelta(days=days)
+    report = walk_forward(db, start, end, persist_for=models)
     db.commit()
     return {m: {k: report[m][k] for k in ("sample_size", "brier", "log_loss", "ece", "base_rate", "mean_predicted")}
-            for m in ("MARKET_A", "MARKET_B")} | {"is_demo": report["is_demo"], "skipped": report["skipped"]}
+            for m in ("MARKET_A", "MARKET_B")} | {"is_demo": report["is_demo"], "skipped": report["skipped"],
+                                                   "window": [start.isoformat(), end.isoformat()]}
 
 
 def job_train(db: Session, n_blocks: int = 6, auto_promote: bool = True) -> dict:
