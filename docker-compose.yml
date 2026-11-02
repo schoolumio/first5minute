@@ -1,4 +1,4 @@
-# Local / single-host deployment of Project Five.
+# Local / single-host deployment of First5Minute.
 #   cp .env.example .env   (then edit secrets)
 #   docker compose up --build
 #   docker compose exec api python -m app.cli create-admin --email you@example.com

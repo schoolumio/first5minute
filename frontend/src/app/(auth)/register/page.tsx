@@ -75,7 +75,7 @@ export default function RegisterPage() {
           <Input id="confirm" name="confirm" type="password" autoComplete="new-password" required />
         </Field>
         <Checkbox name="age" required label="I am 18 or older (or the legal betting age where I live)." />
-        <Checkbox name="terms" required label="I understand Project Five provides statistical estimates, not guaranteed outcomes, and I accept the terms." />
+        <Checkbox name="terms" required label="I understand First5Minute provides statistical estimates, not guaranteed outcomes, and I accept the terms." />
         <Button type="submit" className="w-full" loading={busy}>Create account</Button>
       </form>
       <p className="mt-6 text-center text-sm text-muted">

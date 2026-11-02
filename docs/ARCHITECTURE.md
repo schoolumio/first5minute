@@ -1,4 +1,4 @@
-# Project Five - Architecture & Implementation Plan
+# First5Minute - Architecture & Implementation Plan
 
 ## 1. Architecture
 

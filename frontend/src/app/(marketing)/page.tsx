@@ -30,11 +30,11 @@ const FEATURES = [
 ];
 
 const FAQ = [
-  { q: "Is this a guaranteed betting system?", a: "No. Project Five produces statistical estimates. Five-minute markets are low-scoring and noisy; even well-calibrated probabilities lose regularly. We never advertise guaranteed winnings or accuracy." },
+  { q: "Is this a guaranteed betting system?", a: "No. First5Minute produces statistical estimates. Five-minute markets are low-scoring and noisy; even well-calibrated probabilities lose regularly. We never advertise guaranteed winnings or accuracy." },
   { q: "What exactly is the five-minute cutoff?", a: "By default the window is 00:00-04:59 of match time, measured from the actual kick-off. Bookmakers differ, so settlement rules are configurable, and goals whose timestamps are too imprecise to place relative to the cutoff are marked unresolved rather than guessed." },
   { q: "What is the difference between the two markets?", a: "Market A wins only if no goal is scored before the cutoff (0-0). Market B wins if the score is level at the cutoff, so 0-0, 1-1 and 2-2 all count. They are modelled and reported separately." },
   { q: "Why are some matches excluded?", a: "We never assign a qualifying prediction to a fixture without enough reliable, timestamped history. Competitions with poor event coverage are flagged and excluded rather than padded with assumptions." },
-  { q: "Do you place bets or hold my money?", a: "No. Project Five never holds funds, never places bets and never asks for sportsbook passwords. You can open supported sportsbook pages and optionally record your own bets for tracking." },
+  { q: "Do you place bets or hold my money?", a: "No. First5Minute never holds funds, never places bets and never asks for sportsbook passwords. You can open supported sportsbook pages and optionally record your own bets for tracking." },
   { q: "How do I pay?", a: "Paid plans are billed monthly in Naira through Paystack, which accepts Nigerian cards, bank transfers, USSD and international cards. You can cancel anytime." },
 ];
 
@@ -92,7 +92,7 @@ export default function LandingPage() {
               The first five minutes.<br /><span className="text-brand-500">Decoded.</span>
             </h1>
             <p className="mt-5 max-w-xl text-lg text-muted">
-              Project Five analyses goal-event timelines across global football to estimate the probability of no goal - or a level
+              First5Minute analyses goal-event timelines across global football to estimate the probability of no goal - or a level
               score - at the five-minute cutoff. Transparent models, visible data quality, no hype.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">

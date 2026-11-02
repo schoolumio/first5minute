@@ -21,7 +21,7 @@ configure_logging()
 log = get_logger("http")
 
 app = FastAPI(
-    title="Project Five API",
+    title="First5Minute API",
     version="0.1.0",
     description=(
         "Football intelligence for five-minute markets. Model outputs are statistical estimates, "

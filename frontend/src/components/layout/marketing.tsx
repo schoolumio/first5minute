@@ -21,7 +21,7 @@ export function MarketingHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-bg/85 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" aria-label="Project Five home">
+        <Link href="/" aria-label="First5Minute home">
           <Logo />
         </Link>
         <nav className="hidden items-center gap-7 text-sm text-muted md:flex">
@@ -77,7 +77,7 @@ export function MarketingHeader() {
 export function ResponsibleNote({ className = "" }: { className?: string }) {
   return (
     <p className={`text-xs leading-relaxed text-subtle ${className}`}>
-      18+ only. Project Five provides statistical analysis, not betting advice. Model estimates can be wrong and past performance
+      18+ only. First5Minute provides statistical analysis, not betting advice. Model estimates can be wrong and past performance
       does not guarantee future results. Never stake more than you can afford to lose. If gambling stops being fun, seek support
       from a local responsible-gambling service.
     </p>
@@ -113,7 +113,7 @@ export function MarketingFooter() {
           </ul>
         </div>
       </div>
-      <div className="border-t border-border py-5 text-center text-xs text-subtle">© {new Date().getFullYear()} Project Five · First5Minute</div>
+      <div className="border-t border-border py-5 text-center text-xs text-subtle">© {new Date().getFullYear()} First5Minute</div>
     </footer>
   );
 }

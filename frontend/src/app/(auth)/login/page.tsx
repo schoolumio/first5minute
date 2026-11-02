@@ -35,7 +35,7 @@ function LoginForm() {
   return (
     <>
       <h1 className="text-xl font-bold">Sign in</h1>
-      <p className="mt-1 text-sm text-muted">Welcome back to Project Five.</p>
+      <p className="mt-1 text-sm text-muted">Welcome back to First5Minute.</p>
       {params.get("reset") && <Alert tone="success" className="mt-4">Password updated - sign in with your new password.</Alert>}
       {error && <Alert tone="danger" className="mt-4">{error}</Alert>}
       <form onSubmit={submit} className="mt-6 space-y-4">

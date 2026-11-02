@@ -114,5 +114,5 @@ def test_auth_rate_limit(client, monkeypatch):
 
 def test_login_accepts_existing_account_with_reserved_tld(client, user_factory):
     # Regression: strict email syntax on login locked out accounts created by the CLI.
-    user_factory(email="admin@projectfive.local", role="admin")
-    login(client, "admin@projectfive.local")
+    user_factory(email="admin@first5minute.local", role="admin")
+    login(client, "admin@first5minute.local")

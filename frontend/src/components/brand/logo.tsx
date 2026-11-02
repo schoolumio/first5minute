@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
  * First5Minute mark: a bold "5" whose top bar is the brand green, set inside a
  * stopwatch dial with the opening five minutes highlighted.
  */
-export function LogoMark({ className, title = "Project Five" }: { className?: string; title?: string }) {
+export function LogoMark({ className, title = "First5Minute" }: { className?: string; title?: string }) {
   const ticks = Array.from({ length: 12 }, (_, i) => i);
   return (
     <svg viewBox="0 0 64 64" className={cn("h-8 w-8", className)} role="img" aria-label={title}>
@@ -36,9 +36,9 @@ export function Logo({ className, compact }: { className?: string; compact?: boo
       {!compact && (
         <span className="leading-none">
           <span className="block font-[family-name:var(--font-display)] text-[15px] font-extrabold tracking-tight">
-            PROJECT <span className="text-brand-500">FIVE</span>
+            FIRST<span className="text-brand-500">5</span>MINUTE
           </span>
-          <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-[0.2em] text-muted">First five minutes. Decoded.</span>
+          <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-[0.2em] text-muted">The first five minutes. Decoded.</span>
         </span>
       )}
     </span>

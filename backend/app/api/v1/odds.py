@@ -62,5 +62,5 @@ def fixture_odds(fixture_id: int, user: User = Depends(require_feature("odds_com
             "No odds available. No odds provider is configured." if provider == "none"
             else "No supported bookmaker currently prices this market for this fixture."
         ),
-        "notice": "18+. Odds can change at any time. Project Five does not accept bets or hold funds.",
+        "notice": "18+. Odds can change at any time. First5Minute does not accept bets or hold funds.",
     }

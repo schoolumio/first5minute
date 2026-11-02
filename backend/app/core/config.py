@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=("../.env", ".env"), env_file_encoding="utf-8", extra="ignore")
 
     # --- General -----------------------------------------------------------
-    app_name: str = "Project Five"
+    app_name: str = "First5Minute"
     environment: Literal["development", "test", "staging", "production"] = "development"
     api_prefix: str = "/api/v1"
     frontend_url: str = "http://localhost:3000"
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
 
     # --- Email -------------------------------------------------------------
     email_backend: Literal["console", "smtp", "memory"] = "console"
-    email_from: str = "Project Five <no-reply@projectfive.local>"
+    email_from: str = "First5Minute <no-reply@first5minute.local>"
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     # --- Machine learning ---------------------------------------------------
     model_dir: str = "./model_store"          # joblib artifacts of trained models
     mlflow_tracking_uri: str | None = None    # e.g. sqlite:///mlflow.db or http://mlflow:5000 (unset = no tracking)
-    mlflow_experiment: str = "project-five"
+    mlflow_experiment: str = "first5minute"
     ml_min_oos_sample: int = 300              # out-of-sample settled matches required before a model may be promoted
 
     # --- Payments ----------------------------------------------------------

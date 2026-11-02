@@ -1,4 +1,4 @@
-# Testing Project Five locally - step by step
+# Testing First5Minute locally - step by step
 
 Everything in steps 1-8 was executed from a clean clone (fresh virtualenv, empty database, `npm ci`) before this
 guide was written. You will run on **synthetic DEMO data** - no API keys, payments or email are needed.
@@ -43,7 +43,7 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-dev.txt
 alembic upgrade head
-python -m app.cli create-admin --email admin@projectfive.local --password "AdminPass123"
+python -m app.cli create-admin --email admin@first5minute.local --password "AdminPass123"
 python -m app.cli seed-demo
 uvicorn app.main:app --reload --port 8000
 ```
@@ -141,7 +141,7 @@ pip install -r requirements-dev.txt
 
 ```bash
 alembic upgrade head
-python -m app.cli create-admin --email admin@projectfive.local --password 'AdminPass123'
+python -m app.cli create-admin --email admin@first5minute.local --password 'AdminPass123'
 python -m app.cli seed-demo
 ```
 
@@ -169,7 +169,7 @@ Open **http://localhost:3000**. A purple "Demo environment" banner confirms you 
 Expected numbers come from a fresh seed; yours may differ by a few.
 
 1. **Landing page** - hero, how it works, the two markets, pricing, FAQ. Resize to phone width.
-2. **Admin sign-in** - `admin@projectfive.local` / `AdminPass123`. Dashboard: stat tiles, top matches per market,
+2. **Admin sign-in** - `admin@first5minute.local` / `AdminPass123`. Dashboard: stat tiles, top matches per market,
    model performance (DEMO badge), sync status, **performance-over-time chart** (use "View as table").
 3. **Scanner + match page** - open *Match scanner*, try filters and sorting. Click a match: probabilities for both markets,
    last 5/10/20 form, home/away split, first-goal timing chart, head-to-head, competition baseline.
@@ -241,7 +241,7 @@ Adapters were built from provider documentation and tested only with mock respon
 ```bash
 cp .env.example .env
 docker compose up --build
-docker compose exec api python -m app.cli create-admin --email admin@projectfive.local --password 'AdminPass123'
+docker compose exec api python -m app.cli create-admin --email admin@first5minute.local --password 'AdminPass123'
 docker compose exec api python -m app.cli seed-demo
 ```
 

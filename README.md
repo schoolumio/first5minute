@@ -1,4 +1,4 @@
-# Project Five · First5Minute
+# First5Minute
 
 **The first five minutes. Decoded.** Global football intelligence for two five-minute markets:
 
@@ -7,7 +7,7 @@
 | **A** - No goal in the first five minutes | score is 0-0 at the settlement cutoff | `P = e^-(λh + λa)` |
 | **B** - Level at five minutes | scores are equal at the cutoff (0-0, 1-1, 2-2 ...) | `P = Σk P(H=k)·P(A=k)` (Bessel closed form) |
 
-Project Five is an analytics platform, **not a guaranteed betting system**. Model outputs are labelled
+First5Minute is an analytics platform, **not a guaranteed betting system**. Model outputs are labelled
 *uncalibrated* until sufficient out-of-sample evidence exists. 18+ only.
 
 > **Data honesty.** Without provider credentials the app runs on a clearly labelled **DEMO** provider
@@ -181,5 +181,5 @@ backtesting, plan permissions, admin permissions and Paystack webhooks.
 ## Responsible gambling
 
 Users can set 24-hour and 30-day stake limits, reality-check reminders and self-exclusion
-(which hides sportsbook links and pauses bet tracking). Project Five never holds funds, never places
+(which hides sportsbook links and pauses bet tracking). First5Minute never holds funds, never places
 bets and never asks for sportsbook credentials.

@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Project Five - First five minutes. Decoded.", template: "%s · Project Five" },
+  title: { default: "First5Minute - The first five minutes. Decoded.", template: "%s · First5Minute" },
   description:
     "Global football intelligence for five-minute markets: no-goal and level-score probabilities, data quality and transparent model performance.",
   icons: { icon: "/icon.svg" },

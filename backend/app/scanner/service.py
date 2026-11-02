@@ -243,7 +243,7 @@ def _notify_qualified(db: Session, prediction_ids: list[int]) -> None:
             lines.append(f"- {fx.home_team.name} vs {fx.away_team.name} ({fx.competition.name}): {text}")
         if prefs.get("email"):
             shown = "\n".join(lines[:10]) + (f"\n...and {len(lines) - 10} more" if len(lines) > 10 else "")
-            _safe_email(user.email, f"Project Five: {len(preds)} newly qualified match(es)",
+            _safe_email(user.email, f"First5Minute: {len(preds)} newly qualified match(es)",
                         f"New matches qualified in the scanner:\n\n{shown}\n\nOpen the scanner: {get_settings().frontend_url}/scanner\n\n"
                         "Estimates are statistical, not guarantees. 18+. Change email alerts in Account > Profile.")
     db.flush()
@@ -272,7 +272,7 @@ def _notify_settled(db: Session, settled: list[tuple[Prediction, PredictionOutco
         db.add(Notification(user_id=user.id, kind="prediction_settled", title=f"Settled: {fx.home_team.name} vs {fx.away_team.name}",
                             body=body, link=f"/matches/{fx.id}"))
         if (user.notification_prefs or {}).get("email"):
-            _safe_email(user.email, f"Project Five: {fx.home_team.name} vs {fx.away_team.name} settled", body)
+            _safe_email(user.email, f"First5Minute: {fx.home_team.name} vs {fx.away_team.name} settled", body)
     db.flush()
 
 

@@ -182,7 +182,7 @@ function Bets() {
         </div>
       )}
       <Card>
-        <CardHeader title="Record a bet" description="For your own tracking. Project Five never places bets or holds funds." />
+        <CardHeader title="Record a bet" description="For your own tracking. First5Minute never places bets or holds funds." />
         <CardBody>
           {s.msg && <Alert tone={s.msg.tone} className="mb-3">{s.msg.text}</Alert>}
           {warnings.map((w) => <Alert key={w} tone="warn" className="mb-3" title="Limit reached">{w} Consider taking a break.</Alert>)}
@@ -257,7 +257,7 @@ function Safer() {
           <Field label="Self-exclude" hint="Pauses sportsbook links and bet tracking."><Select name="self_exclude_days" defaultValue=""><option value="">No exclusion</option>{[1, 7, 30, 90, 180, 365].map((d) => <option key={d} value={d}>{d} day{d > 1 && "s"}</option>)}</Select></Field>
           <div><Button type="submit" loading={s.busy}>Save preferences</Button></div>
         </form>
-        <p className="mt-6 text-xs text-subtle">If gambling is causing harm, contact a local support service. Project Five is for adults 18+ only.</p>
+        <p className="mt-6 text-xs text-subtle">If gambling is causing harm, contact a local support service. First5Minute is for adults 18+ only.</p>
       </CardBody>
     </Card>
   );

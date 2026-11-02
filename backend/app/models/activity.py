@@ -51,7 +51,7 @@ class Notification(TimestampMixin, Base):
 
 
 class BetTracking(TimestampMixin, Base):
-    """User-recorded bets. Project Five never holds funds or places bets."""
+    """User-recorded bets. First5Minute never holds funds or places bets."""
 
     __tablename__ = "bet_tracking"
     __table_args__ = (Index("ix_bet_tracking_user_created", "user_id", "created_at"),)

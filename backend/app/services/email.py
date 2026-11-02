@@ -50,8 +50,8 @@ def send_verification_email(to: str, token: str) -> None:
     url = f"{get_settings().frontend_url}/verify-email?token={token}"
     send_email(
         to,
-        "Verify your Project Five account",
-        f"Welcome to Project Five.\n\nConfirm your email address:\n{url}\n\nThis link expires in 24 hours.",
+        "Verify your First5Minute account",
+        f"Welcome to First5Minute.\n\nConfirm your email address:\n{url}\n\nThis link expires in 24 hours.",
     )
 
 
@@ -59,7 +59,7 @@ def send_password_reset_email(to: str, token: str) -> None:
     url = f"{get_settings().frontend_url}/reset-password?token={token}"
     send_email(
         to,
-        "Reset your Project Five password",
+        "Reset your First5Minute password",
         f"A password reset was requested for your account.\n\nReset it here:\n{url}\n\n"
         "This link expires in 60 minutes. If you did not request it, ignore this email.",
     )
