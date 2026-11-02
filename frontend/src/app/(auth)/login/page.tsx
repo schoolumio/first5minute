@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/feedback";
 import { Field, Input } from "@/components/ui/form";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { PasswordInput } from "@/components/ui/password-input";
 
 function LoginForm() {
   const { login } = useAuth();
@@ -43,7 +44,7 @@ function LoginForm() {
           <Input id="email" name="email" type="email" autoComplete="email" required />
         </Field>
         <Field label="Password" htmlFor="password">
-          <Input id="password" name="password" type="password" autoComplete="current-password" required />
+          <PasswordInput id="password" name="password" autoComplete="current-password" required />
         </Field>
         <div className="flex justify-end">
           <Link href="/forgot-password" className="text-xs text-brand-400 hover:underline">Forgot password?</Link>

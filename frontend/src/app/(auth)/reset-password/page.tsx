@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/feedback";
 import { Field, Input } from "@/components/ui/form";
 import { api, ApiError } from "@/lib/api";
+import { PasswordInput } from "@/components/ui/password-input";
 
 function ResetForm() {
   const token = useSearchParams().get("token") ?? "";
@@ -36,10 +37,10 @@ function ResetForm() {
       {error && <Alert tone="danger" className="mt-4">{error}</Alert>}
       <form onSubmit={submit} className="mt-6 space-y-4">
         <Field label="New password" htmlFor="password" hint="At least 10 characters with upper and lower case letters and a digit.">
-          <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
+          <PasswordInput id="password" name="password" autoComplete="new-password" minLength={10} required />
         </Field>
         <Field label="Confirm password" htmlFor="confirm">
-          <Input id="confirm" name="confirm" type="password" autoComplete="new-password" required />
+          <PasswordInput id="confirm" name="confirm" autoComplete="new-password" required />
         </Field>
         <Button type="submit" className="w-full" loading={busy} disabled={!token}>Update password</Button>
       </form>

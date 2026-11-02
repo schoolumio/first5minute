@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { kickoff, MARKET_LABEL, money } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import type { Fixture, Plan } from "@/lib/types";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type Tab = "profile" | "billing" | "saved" | "bets" | "safer" | "security";
 
@@ -359,9 +360,9 @@ function Security() {
       <CardBody>
         {s.msg && <Alert tone={s.msg.tone} className="mb-4">{s.msg.text}</Alert>}
         <form onSubmit={submit} className="grid max-w-md gap-4">
-          <Field label="Current password"><Input name="current" type="password" autoComplete="current-password" required /></Field>
-          <Field label="New password" hint="At least 10 characters with upper and lower case letters and a digit."><Input name="new" type="password" autoComplete="new-password" minLength={10} required /></Field>
-          <Field label="Confirm new password"><Input name="confirm" type="password" autoComplete="new-password" required /></Field>
+          <Field label="Current password"><PasswordInput name="current" autoComplete="current-password" required /></Field>
+          <Field label="New password" hint="At least 10 characters with upper and lower case letters and a digit."><PasswordInput name="new" autoComplete="new-password" minLength={10} required /></Field>
+          <Field label="Confirm new password"><PasswordInput name="confirm" autoComplete="new-password" required /></Field>
           <div><Button type="submit" loading={s.busy}>Change password</Button></div>
         </form>
       </CardBody>

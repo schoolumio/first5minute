@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/feedback";
 import { Checkbox, Field, Input, Select } from "@/components/ui/form";
 import { api, ApiError } from "@/lib/api";
+import { PasswordInput } from "@/components/ui/password-input";
 
 const COUNTRIES = [
   ["NG", "Nigeria"], ["GH", "Ghana"], ["KE", "Kenya"], ["ZA", "South Africa"], ["GB", "United Kingdom"],
@@ -69,10 +70,10 @@ export default function RegisterPage() {
           </Select>
         </Field>
         <Field label="Password" htmlFor="password" hint="At least 10 characters with upper and lower case letters and a digit.">
-          <Input id="password" name="password" type="password" autoComplete="new-password" minLength={10} required />
+          <PasswordInput id="password" name="password" autoComplete="new-password" minLength={10} required />
         </Field>
         <Field label="Confirm password" htmlFor="confirm">
-          <Input id="confirm" name="confirm" type="password" autoComplete="new-password" required />
+          <PasswordInput id="confirm" name="confirm" autoComplete="new-password" required />
         </Field>
         <Checkbox name="age" required label="I am 18 or older (or the legal betting age where I live)." />
         <Checkbox name="terms" required label="I understand First5Minute provides statistical estimates, not guaranteed outcomes, and I accept the terms." />
