@@ -63,7 +63,13 @@ def sync_days(db: Session, provider: FootballDataProvider, days: list[date], wit
     db.commit()
     ing = _ingestor(db, provider)
     try:
-        for day in days:
+        queue = list(days)
+        window: tuple[date, date] | None = None
+        while queue:
+            day = queue.pop(0)
+            if window and not (window[0] <= day <= window[1]):
+                ing.stats.days_outside_plan += 1          # known to be outside the plan: no request is spent on it
+                continue
             try:
                 fixtures = provider.fixtures_by_date(day)
             except ProviderQuotaExceeded as exc:
@@ -71,6 +77,13 @@ def sync_days(db: Session, provider: FootballDataProvider, days: list[date], wit
                 ing.stats.errors.append(str(exc))
                 break
             except ProviderPlanLimit as exc:
+                if exc.window and window is None:
+                    # e.g. the free plan only serves yesterday..tomorrow: remember the window, skip this day and
+                    # every other day outside it, and carry on with the days the plan does allow.
+                    window = exc.window
+                    ing.stats.days_outside_plan += 1
+                    log.info("plan_date_window", first=str(window[0]), last=str(window[1]))
+                    continue
                 ing.stats.plan_limited = True
                 ing.stats.errors.append(str(exc))
                 break
@@ -143,7 +156,10 @@ def refresh_pending_results(db: Session, provider: FootballDataProvider, lookbac
 
 def sync_window(db: Session, provider: FootballDataProvider, past_days: int, future_days: int) -> IngestStats:
     today = datetime.now(UTC).date()
-    days = [today + timedelta(days=d) for d in range(-past_days, future_days + 1)]
+    # Nearest to today first: plans with a short date window (free: yesterday..tomorrow) serve those days, and a
+    # refused day teaches the sync the window so it can skip the rest without spending requests.
+    offsets = sorted(range(-past_days, future_days + 1), key=lambda d: (abs(d), -d))
+    days = [today + timedelta(days=d) for d in offsets]
     return sync_days(db, provider, days)
 
 

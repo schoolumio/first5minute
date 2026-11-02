@@ -61,6 +61,7 @@ class IngestStats:
     filtered_out: int = 0
     quota_exhausted: bool = False
     plan_limited: bool = False
+    days_outside_plan: int = 0       # days skipped because the plan's date window excludes them
     errors: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:

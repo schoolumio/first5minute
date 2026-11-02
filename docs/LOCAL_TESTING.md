@@ -280,6 +280,8 @@ paid plans allow the current season and far more requests. You do not have to gu
    empty by design - review results in *Admin -> Models*, *Admin -> Competitions* and the `backtest` output.
 8. Start the API (`uvicorn app.main:app --reload --port 8000`) and the website as before.
 
+**Free plan date window.** The free plan serves only *yesterday, today and tomorrow* (the error says e.g. "try from 2026-11-01 to 2026-11-03"). `python -m app.cli sync` handles this: it asks for the nearest days first, learns the window from the first refused day and skips the rest without spending requests. That lets the scanner see tomorrow's matches, but **the models only use the last 730 days of history**, so a 2023/24 download is too old to give 2026 matches any history and they will show as excluded. A working live scanner needs recent seasons (2025/26 and 2026/27), which the free plan cannot download; that needs a paid plan.
+
 What to expect: teams need at least 5 (watchlist) to 10 (qualified) matches with reliable event timelines, so a 120-day backfill of a
 top league is the minimum. Real five-minute no-goal probabilities are about 85-90 %, so few matches reach the default 90 % qualified
 threshold - tune it in *Admin -> Settings*. Leagues whose timelines do not reconcile with scores are excluded automatically.

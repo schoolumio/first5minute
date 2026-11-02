@@ -16,6 +16,7 @@ from app.providers.football.base import (
     FootballDataProvider,
     LeagueScopeError,
     NormalizedCompetition,
+    ProviderPlanLimit,
     ProviderQuotaExceeded,
 )
 from app.providers.http import ProviderHttpClient
@@ -242,7 +243,6 @@ def test_admin_providers_exposes_league_scope(client, user_factory):
 
 # ================================================================== season download, plan limits, diagnostics
 from app.ingestion.sync import sync_league_season  # noqa: E402
-from app.providers.football.base import ProviderPlanLimit  # noqa: E402
 
 
 class SeasonFake(FakeFootball):
@@ -336,8 +336,9 @@ def test_api_football_plan_errors_and_season_request():
     assert "check your plan" in str(e.value) and "backfill-season" in str(e.value) and not isinstance(e.value, ProviderQuotaExceeded)
     date_err = {"errors": {"plan": "Free plans do not have access to this date, try from 2026-11-01 to 2026-11-03."}, "response": []}
     prov2 = api_football.ApiFootballProvider(client=_client(lambda r: httpx.Response(200, json=date_err)))
-    with pytest.raises(ProviderPlanLimit):
+    with pytest.raises(ProviderPlanLimit) as e2:
         prov2.fixtures_by_date(date(2026, 1, 1))
+    assert e2.value.window == (date(2026, 11, 1), date(2026, 11, 3))
 
 
 def test_day_sync_and_backfill_stop_on_plan_limit_without_wasting_requests(db):
@@ -472,3 +473,36 @@ def test_other_plan_errors_are_not_mistaken_for_the_bulk_restriction():
     with pytest.raises(ProviderPlanLimit):
         prov.fixtures_with_events(["1", "2"])
     assert prov._bulk_ok is True                                                        # no silent fallback for unrelated plan limits
+
+
+class WindowedFake(FakeFootball):
+    """A plan that serves only yesterday..tomorrow and refuses any other date (like API-Football's free plan)."""
+
+    def fixtures_by_date(self, day):
+        if not (TODAY - timedelta(days=1) <= day <= TODAY + timedelta(days=1)):
+            self.day_calls.append(day)
+            raise ProviderPlanLimit(f"Free plans do not have access to this date, try from {TODAY - timedelta(days=1)} to "
+                                    f"{TODAY + timedelta(days=1)}.", window=(TODAY - timedelta(days=1), TODAY + timedelta(days=1)))
+        return super().fixtures_by_date(day)             # records the call itself
+
+
+def test_date_window_plan_syncs_the_allowed_days_and_wastes_one_request(db):
+    p = WindowedFake()
+    p.add(TODAY + timedelta(days=1), 1)
+    p.add(TODAY, 2)
+    p.add(TODAY - timedelta(days=1), 3)
+    days = [TODAY + timedelta(days=d) for d in (-3, -2, -1, 0, 1, 2, 3)]       # oldest first, as a naive caller would
+    stats = sync_days(db, p, days, league_ids=None)
+    assert stats.fixtures_created == 3 and not stats.plan_limited and not stats.quota_exhausted
+    assert stats.days_outside_plan == 4 and len(p.day_calls) == 4                # 3 allowed days + ONE refused probe
+    assert db.scalar(select(SyncRun.status).order_by(SyncRun.id.desc())) == "success"
+
+
+def test_sync_window_asks_for_the_days_nearest_today_first(db):
+    from app.ingestion.sync import sync_window
+
+    p = WindowedFake()
+    p.add(TODAY + timedelta(days=1), 1)
+    stats = sync_window(db, p, past_days=2, future_days=3)
+    assert p.day_calls[:3] == [TODAY, TODAY + timedelta(days=1), TODAY - timedelta(days=1)]
+    assert stats.fixtures_created == 1 and stats.days_outside_plan == 3 and len(p.day_calls) == 4

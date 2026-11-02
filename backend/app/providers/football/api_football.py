@@ -14,6 +14,7 @@ your bookmaker's settlement rule (configurable in ``settlement_rules``).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime
 
 from app.core.config import get_settings
@@ -138,10 +139,12 @@ class ApiFootballProvider(b.FootballDataProvider):
             text = str(errors)
             low = text.lower()
             if (isinstance(errors, dict) and "plan" in errors) or "do not have access" in low or "free plans" in low:
+                m = re.search(r"from (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})", text)
+                window = (date.fromisoformat(m.group(1)), date.fromisoformat(m.group(2))) if m else None
                 raise b.ProviderPlanLimit(
                     f"Your API-Football plan does not include this data: {text}. Free plans are usually limited to older seasons and a "
                     "short date window - check your plan at dashboard.api-football.com, or use an older season "
-                    "(python -m app.cli backfill-season --league <id> --season <year>).")
+                    "(python -m app.cli backfill-season --league <id> --season <year>).", window=window)
             if (isinstance(errors, dict) and "requests" in errors) or "request limit" in low:
                 raise b.ProviderQuotaExceeded(f"api_football request limit reached: {errors}")
             raise b.ProviderError(f"api_football error: {errors}")

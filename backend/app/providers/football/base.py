@@ -112,7 +112,14 @@ class ProviderQuotaExceeded(ProviderError):
 
 
 class ProviderPlanLimit(ProviderError):
-    """The provider plan does not include the requested date range / season (e.g. a free plan asking for the current season)."""
+    """The provider plan does not include the requested date range / season (e.g. a free plan asking for the current season).
+
+    ``window`` is the (first, last) date the plan *does* allow, when the provider says so.
+    """
+
+    def __init__(self, message: str = "", window: tuple[date, date] | None = None):
+        super().__init__(message)
+        self.window = window
 
 
 class LeagueScopeError(ProviderError):
