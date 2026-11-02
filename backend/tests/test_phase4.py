@@ -230,3 +230,30 @@ def test_env_file_lookup_prefers_backend_over_repo_root(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     s = Settings()
     assert s.app_name == "FromRoot" and s.frontend_url == "http://backend.example"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("http://localhost:3000", ["http://localhost:3000"]),
+    ("http://a.example, http://b.example", ["http://a.example", "http://b.example"]),
+    ('["http://c.example"]', ["http://c.example"]),
+])
+def test_cors_origins_accept_plain_comma_and_json_forms(monkeypatch, raw, expected):
+    from app.core.config import Settings
+
+    monkeypatch.setenv("CORS_ORIGINS", raw)
+    assert Settings().cors_origins == expected
+
+
+def test_shipped_env_example_is_loadable(monkeypatch, tmp_path):
+    """Regression: copying .env.example verbatim must produce a working configuration."""
+    from pathlib import Path
+
+    from app.core.config import Settings
+
+    example = Path(__file__).resolve().parents[2] / ".env.example"
+    for line in example.read_text().splitlines():          # tests pin their own values; clear them so the file is what is read
+        key = line.split("=", 1)[0].strip()
+        if "=" in line and not line.startswith("#"):
+            monkeypatch.delenv(key.upper(), raising=False)
+    s = Settings(_env_file=example)
+    assert s.football_provider == "demo" and s.cors_origins == ["http://localhost:3000"] and s.environment == "development"

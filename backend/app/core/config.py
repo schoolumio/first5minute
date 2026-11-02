@@ -8,10 +8,10 @@ production by ``Settings.validate_production``.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEV_SECRET = "dev-insecure-secret-change-me-0123456789abcdef"
 
@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "staging", "production"] = "development"
     api_prefix: str = "/api/v1"
     frontend_url: str = "http://localhost:3000"
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    # NoDecode: accept "a,b" (comma separated) or a JSON list; the validator below does the parsing.
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["http://localhost:3000"])
     log_level: str = "INFO"
     sentry_dsn: str | None = None
 
@@ -83,7 +84,12 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_origins(cls, v: object) -> object:
-        if isinstance(v, str) and not v.startswith("["):
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("["):
+                import json
+
+                return json.loads(v)
             return [o.strip() for o in v.split(",") if o.strip()]
         return v
 
