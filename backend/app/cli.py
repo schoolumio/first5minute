@@ -118,8 +118,11 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--reset", action="store_true")
     s.add_argument("--replay-days", type=int, default=14)
     sub.add_parser("reset-demo")
-    for job in ("sync", "scan", "settle", "odds", "expire"):
+    for job in ("sync", "scan", "settle", "odds", "expire", "notify"):
         sub.add_parser(job)
+    rn = sub.add_parser("renew", help="reminders + auto-renewal charges + expiry. --as-of simulates a later date (demo payments only)")
+    rn.add_argument("--as-of", help="pretend it is this UTC time, e.g. 2026-12-01T09:00 (refused unless PAYMENT_PROVIDER=demo)")
+    rn.add_argument("--advance-days", type=float, help="pretend N days have passed, e.g. 30 (refused unless PAYMENT_PROVIDER=demo)")
     lg = sub.add_parser("leagues", help="search the provider's leagues by name to find ids for FOOTBALL_LEAGUE_IDS")
     lg.add_argument("--search", required=True, help="at least 3 characters, e.g. premier")
     pc = sub.add_parser("provider-check", help="cheap read-only check: provider health + one real fixture timeline (run before backfill)")
@@ -152,6 +155,18 @@ def main(argv: list[str] | None = None) -> None:
         with SessionLocal() as db:
             reset_demo(db)
         print("Demo data removed")
+    elif args.cmd == "renew":
+        from app.workers.jobs import job_renew
+
+        when = None
+        if args.as_of or args.advance_days is not None:
+            if get_settings().payment_provider != "demo":
+                sys.exit("--as-of/--advance-days are only allowed with PAYMENT_PROVIDER=demo (never with real charges)")
+            when = (datetime.fromisoformat(args.as_of).replace(tzinfo=UTC) if args.as_of
+                    else utcnow() + timedelta(days=args.advance_days))
+            print(f"(simulated clock: {when:%Y-%m-%d %H:%M} UTC)")
+        with SessionLocal() as db:
+            print(json.dumps(job_renew(db, when), indent=2, default=str))
     elif args.cmd == "leagues":
         from app.providers.football.registry import get_provider
 

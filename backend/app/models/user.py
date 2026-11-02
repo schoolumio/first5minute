@@ -16,6 +16,8 @@ from sqlalchemy import (
     Numeric,
     String,
     UniqueConstraint,
+    false,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -113,6 +115,12 @@ class Subscription(TimestampMixin, Base):
     payment_provider: Mapped[str | None] = mapped_column(String(32))
     provider_subscription_ref: Mapped[str | None] = mapped_column(String(128))
     provider_customer_ref: Mapped[str | None] = mapped_column(String(128))
+    # Auto-renewal / dunning state (see services/billing.py)
+    auto_renew: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    renewal_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_renewal_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reminder_sent_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # period end already reminded
+    past_due_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="subscriptions")
     plan: Mapped[Plan] = relationship(lazy="joined")
@@ -133,3 +141,26 @@ class Invoice(TimestampMixin, Base):
     provider_reference: Mapped[str] = mapped_column(String(128))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw_payload: Mapped[dict | None] = mapped_column(JSON)
+    kind: Mapped[str] = mapped_column(String(16), default="checkout", server_default="checkout")  # checkout|renewal
+    failure_reason: Mapped[str | None] = mapped_column(String(200))
+
+
+class PaymentMethod(TimestampMixin, Base):
+    """A reusable payment authorisation returned by the provider (never card numbers or CVVs)."""
+
+    __tablename__ = "payment_methods"
+    __table_args__ = (Index("ix_payment_methods_user", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(32))
+    authorization_code: Mapped[str] = mapped_column(String(128))
+    card_signature: Mapped[str | None] = mapped_column(String(128))  # provider's per-card fingerprint, dedupes re-entered cards
+    brand: Mapped[str | None] = mapped_column(String(32))
+    last4: Mapped[str | None] = mapped_column(String(4))
+    exp_month: Mapped[str | None] = mapped_column(String(2))
+    exp_year: Mapped[str | None] = mapped_column(String(4))
+    bank: Mapped[str | None] = mapped_column(String(64))
+    is_default: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

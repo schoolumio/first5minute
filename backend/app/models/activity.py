@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,6 +49,9 @@ class Notification(TimestampMixin, Base):
     link: Mapped[str | None] = mapped_column(String(300))
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     channel: Mapped[str] = mapped_column(String(16), default="in_app")
+    # Email outbox: set email_requested when the message must also be emailed; the notify job sends it and stamps emailed_at.
+    email_requested: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class BetTracking(TimestampMixin, Base):

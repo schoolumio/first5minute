@@ -70,10 +70,14 @@ function Profile() {
   );
 }
 
+interface PaymentMethodRow { id: number; brand: string | null; last4: string | null; exp_month: string | null; exp_year: string | null; is_default: boolean; is_demo: boolean }
 interface SubRes {
   entitlements: { plan: string; plan_name: string };
   subscription: { plan: Plan; status: string; current_period_end: string | null; cancel_at_period_end: boolean } | null;
-  invoices: { id: number; amount: number; currency: string; status: string; reference: string; created_at: string; paid_at: string | null }[];
+  renewal: { auto_renew: boolean; will_auto_renew: boolean; attempts: number; max_attempts: number; next_attempt_at: string | null; past_due: boolean; access_until: string } | null;
+  payment_methods: PaymentMethodRow[];
+  payment_provider: string;
+  invoices: { id: number; amount: number; currency: string; status: string; reference: string; kind: string; failure_reason: string | null; created_at: string; paid_at: string | null }[];
   payments_enabled: boolean;
 }
 
@@ -89,9 +93,27 @@ function Billing() {
   }, [reference]);
   if (loading || !data) return <Skeleton className="h-48" />;
   const sub = data.subscription;
+  const rn = data.renewal;
+  const act = (fn: () => Promise<unknown>, ok: string) => s.run(async () => { await fn(); await refresh(); reload(); }, ok);
+  const payNow = () => s.run(async () => {
+    if (!sub) return;
+    const res = await api<{ authorization_url: string }>("/subscriptions/checkout", { method: "POST", body: { plan_code: sub.plan.code } });
+    window.location.href = res.authorization_url;
+  });
+  const cancelled = sub?.status === "cancelled" || sub?.cancel_at_period_end;
   return (
     <div className="space-y-6">
       {s.msg && <Alert tone={s.msg.tone}>{s.msg.text}</Alert>}
+      {data.payment_provider === "demo" && (
+        <Alert tone="warn">DEMO payments: no real money moves. Cards on the checkout page are simulated, for testing only.</Alert>
+      )}
+      {rn?.past_due && (
+        <Alert tone="danger">
+          We could not collect your last renewal payment{rn.attempts ? ` (attempt ${rn.attempts} of ${rn.max_attempts})` : ""}. Your plan stays active until{" "}
+          {new Date(rn.access_until).toLocaleDateString()}. Pay now to keep access.
+          <div className="mt-2"><Button size="sm" loading={s.busy} onClick={payNow}>Pay now</Button></div>
+        </Alert>
+      )}
       <Card>
         <CardHeader title="Subscription" action={<ButtonLink href="/pricing" size="sm" variant="outline">Change plan</ButtonLink>} />
         <CardBody className="flex flex-wrap items-center justify-between gap-4">
@@ -99,27 +121,78 @@ function Billing() {
             <p className="text-2xl font-bold">{data.entitlements.plan_name}</p>
             {sub ? (
               <p className="mt-1 text-sm text-muted">
-                {sub.cancel_at_period_end ? "Cancelled - access until " : "Renews "} {sub.current_period_end && new Date(sub.current_period_end).toLocaleDateString()}
+                {cancelled ? "Cancelled - access until " : rn?.will_auto_renew ? "Renews automatically on " : "Ends on "}
+                {sub.current_period_end && new Date(sub.current_period_end).toLocaleDateString()}
                 {" · "}{money(sub.plan.price, sub.plan.currency)}/{sub.plan.interval}
               </p>
             ) : <p className="mt-1 text-sm text-muted">Free plan - limited daily insights.</p>}
+            {sub && rn && !cancelled && !rn.will_auto_renew && (
+              <p className="mt-1 text-xs text-subtle">
+                {rn.auto_renew ? "No saved card - renew manually before it ends." : "Auto-renew is off - renew manually before it ends."}
+              </p>
+            )}
           </div>
-          {sub && !sub.cancel_at_period_end && sub.status === "active" && (
-            <Button variant="danger" size="sm" loading={s.busy}
-              onClick={() => confirm("Cancel your subscription? Access continues until the end of the paid period.") && s.run(async () => { await api("/subscriptions/cancel", { method: "POST" }); reload(); await refresh(); }, "Subscription cancelled.")}>
-              Cancel subscription
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {sub && !cancelled && <Button variant="outline" size="sm" loading={s.busy} onClick={payNow}>Renew now</Button>}
+            {sub && cancelled && sub.status === "cancelled" && (
+              <Button size="sm" loading={s.busy} onClick={() => act(() => api("/subscriptions/resume", { method: "POST" }), "Subscription resumed.")}>Resume subscription</Button>
+            )}
+            {sub && !cancelled && (sub.status === "active" || sub.status === "past_due") && (
+              <Button variant="danger" size="sm" loading={s.busy}
+                onClick={() => confirm("Cancel your subscription? No further payments will be taken and access continues until the end of the paid period.") && act(() => api("/subscriptions/cancel", { method: "POST" }), "Subscription cancelled.")}>
+                Cancel subscription
+              </Button>
+            )}
+          </div>
         </CardBody>
+      </Card>
+      {sub && !cancelled && rn && (
+        <Card>
+          <CardHeader title="Auto-renewal" />
+          <CardBody className="space-y-4">
+            <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-border bg-surface-2 px-3 py-2.5 text-sm">
+              Renew automatically using my saved card
+              <Switch label="Auto-renew" checked={rn.auto_renew} onChange={(v) => act(() => api("/subscriptions/auto-renew", { method: "POST", body: { enabled: v } }), v ? "Auto-renew is on." : "Auto-renew is off - no further charges will be taken.")} />
+            </div>
+            <p className="text-xs text-subtle">
+              We charge your saved card a couple of hours before the period ends, retry up to {rn.max_attempts} times if it fails, and keep your access during a short grace period.
+              We never see your card number - only a token from the payment provider. You can switch this off at any time.
+            </p>
+          </CardBody>
+        </Card>
+      )}
+      <Card>
+        <CardHeader title="Saved cards" />
+        {!data.payment_methods.length ? <EmptyState title="No saved card">A card is saved when you pay at checkout, so your plan can renew automatically.</EmptyState> : (
+          <CardBody className="space-y-2">
+            {data.payment_methods.map((m) => (
+              <div key={m.id} className="flex items-center justify-between rounded-[var(--radius-md)] border border-border bg-surface-2 px-3 py-2.5 text-sm">
+                <span>
+                  <span className="capitalize">{m.brand ?? "Card"}</span> ending {m.last4 ?? "----"}
+                  {m.exp_month && m.exp_year ? <span className="text-muted"> · expires {m.exp_month}/{m.exp_year}</span> : null}
+                  {m.is_default && <Badge tone="brand" className="ml-2">default</Badge>}
+                  {m.is_demo && <Badge tone="demo" className="ml-2">demo</Badge>}
+                </span>
+                <Button variant="ghost" size="sm" aria-label="Remove card" loading={s.busy}
+                  onClick={() => confirm("Remove this card? Your plan will not renew automatically without a saved card.") && act(() => api(`/subscriptions/payment-methods/${m.id}`, { method: "DELETE" }), "Card removed.")}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </CardBody>
+        )}
       </Card>
       <Card>
         <CardHeader title="Invoice history" />
         {!data.invoices.length ? <EmptyState title="No invoices yet" /> : (
           <Table>
-            <thead><tr><Th>Date</Th><Th>Reference</Th><Th className="text-right">Amount</Th><Th>Status</Th></tr></thead>
+            <thead><tr><Th>Date</Th><Th>Reference</Th><Th>Type</Th><Th className="text-right">Amount</Th><Th>Status</Th></tr></thead>
             <tbody>{data.invoices.map((i) => (
               <tr key={i.id}><Td className="text-xs text-muted">{new Date(i.created_at).toLocaleDateString()}</Td><Td className="font-[family-name:var(--font-mono)] text-xs">{i.reference}</Td>
-                <Td className="tabular text-right">{money(i.amount, i.currency)}</Td><Td><Badge tone={i.status === "paid" ? "brand" : i.status === "failed" ? "danger" : "neutral"}>{i.status}</Badge></Td></tr>
+                <Td className="text-xs text-muted">{i.kind === "renewal" ? "auto-renewal" : "checkout"}</Td>
+                <Td className="tabular text-right">{money(i.amount, i.currency)}</Td>
+                <Td><Badge tone={i.status === "paid" ? "brand" : i.status === "failed" ? "danger" : "neutral"}>{i.status}</Badge>
+                  {i.failure_reason && <span className="ml-2 text-xs text-subtle">{i.failure_reason}</span>}</Td></tr>
             ))}</tbody>
           </Table>
         )}

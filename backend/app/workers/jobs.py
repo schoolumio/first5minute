@@ -81,9 +81,30 @@ def job_expire(db: Session) -> dict:
     return {"expired": n}
 
 
+def job_renew(db: Session, now=None) -> dict:
+    """Renewal reminders, auto-renewal charges (with retries), then expiry/grace handling - in that order."""
+    from app.services.billing import renew_due_subscriptions, send_renewal_reminders
+
+    reminders = send_renewal_reminders(db, now)
+    db.commit()
+    charges = renew_due_subscriptions(db, now=now)
+    expired = expire_subscriptions(db, now)
+    db.commit()
+    return {"reminders_sent": reminders, "renewals": charges, "expired": expired}
+
+
+def job_notify(db: Session) -> dict:
+    """Email queued notifications (billing receipts, renewal notices)."""
+    from app.services.notifications import deliver_notification_emails
+
+    out = deliver_notification_emails(db)
+    db.commit()
+    return out
+
+
 JOBS = {
     "sync": job_sync, "scan": job_scan, "settle": job_settle, "backtest": job_backtest,
-    "train": job_train, "odds": job_odds, "expire": job_expire,
+    "train": job_train, "odds": job_odds, "expire": job_expire, "renew": job_renew, "notify": job_notify,
 }
 
 

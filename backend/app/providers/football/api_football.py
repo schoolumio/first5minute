@@ -126,7 +126,8 @@ class ApiFootballProvider(b.FootballDataProvider):
                 raise b.ProviderNotConfigured("API_FOOTBALL_KEY is not set")
             client = ProviderHttpClient(
                 self.name, settings.api_football_base_url, headers={"x-apisports-key": settings.api_football_key},
-                per_minute=settings.api_football_requests_per_minute,
+                # 10% below the plan limit with no burst: the provider counts a rolling window, so staying under needs margin
+                per_minute=max(1, int(settings.api_football_requests_per_minute * 0.9)), burst=1,
             )
         self.client = client
         self._bulk_ok = True

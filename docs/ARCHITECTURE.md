@@ -139,6 +139,31 @@ real conclusions require real, much larger histories.
 * **ROI integrity**: backtests use, per fixture, each real, active, rule-compatible bookmaker's *last available pre-kick-off price* (not the best
   price ever seen), best across bookmakers; demo odds are never used.
 
+## 3d. Subscriptions, auto-renewal and notification email (Phase 6)
+
+* **Saved payment methods** (`payment_methods`): after a successful checkout the provider's *reusable authorisation* (a token plus brand/last4/expiry for
+  display) is stored. Card numbers and CVVs never reach First5Minute. The token is never returned by the API. Re-entering the same card (same provider
+  `signature`) replaces rather than duplicates it. Users can remove a card at any time.
+* **Auto-renewal** (`services/billing.renew_due_subscriptions`, Celery every 15 min): for active/past-due plans with `auto_renew`, not cancelled, and a saved card,
+  the card is charged `RENEWAL_LEAD_HOURS` (2h) before the period ends via `charge_authorization`. The renewal *invoice is committed before the provider is
+  called* (so a crash cannot lose the reference), row-locked per subscription, and the reference includes the period end and attempt number so a charge can
+  never be duplicated. Success goes through the same `apply_successful_payment` as checkout (amount/currency re-checked, idempotent), extending from the
+  later of "now" and the old end. A late renewal starts the new period when it is paid; grace days are not free time.
+* **Failures (dunning)**: a declined/errored charge marks the invoice failed with the provider's reason, notifies the user, and retries after
+  `RENEWAL_RETRY_HOURS` (24h) up to `RENEWAL_MAX_ATTEMPTS` (3). Once the period has ended the plan becomes `past_due`; paid access continues for
+  `RENEWAL_GRACE_DAYS` (3) and then the plan expires. A successful retry restores `active` and clears the counters. A *pending* charge is resolved by
+  webhook or by `verify` and is never charged twice.
+* **User control**: switch auto-renew off, cancel (no further charges; access until period end), resume a cancelled plan, "Renew now" (normal checkout, which also
+  saves the new card). Reminders are sent `RENEWAL_REMINDER_DAYS` (3) before the end, once per period, worded for auto-renew / manual / cancelled.
+* **Email outbox** (`services/notifications.py`, Celery every 5 min): business code writes a `Notification` with `email_requested`; the notify job sends it after
+  commit and stamps `emailed_at`. A mail outage leaves it queued and retried; anything older than 3 days is dropped rather than sent late. Billing messages
+  (receipt, renewal notice, failure, expiry) are transactional; scanner/settlement alerts keep using the user's notification preferences.
+* **Demo payments** (`PAYMENT_PROVIDER=demo`): a local simulator with two test cards (renewals succeed / renewals are declined) and a clearly labelled checkout
+  page. `python -m app.cli renew --advance-days N` simulates the passage of time and is refused unless the provider is `demo`. Startup refuses `demo`
+  in production.
+* **Not done**: SMS/push, tax/VAT invoices, proration when changing plans mid-period, refunds UI, and the Paystack *subscription-plan* objects (we charge the
+  authorisation ourselves so the renewal logic stays under our control and testable).
+
 ## 4. Phase status
 
 | Phase | Status | Notes |
@@ -148,7 +173,7 @@ real conclusions require real, much larger histories.
 | 3. Statistical engine & backtesting | **Done** | Baseline Poisson A/B plus logistic regression, LightGBM, empirical-Bayes hierarchical Poisson, equal-weight ensemble, Platt/isotonic calibration, walk-forward evaluation with paired-bootstrap significance, promotion gates, model registry/activation/rollback and optional MLflow tracking (see section 3b). Full MCMC Bayesian hierarchical models (PyMC/Stan) are not implemented. |
 | 4. Scanner & dashboard | **Done** | Scanner API + UI with filters/sorting, dashboard, match details with charts, prediction history & performance; automatic competition eligibility (coverage tiers, EXCLUDED with reason, admin override); email digests and settlement alerts; weekly performance trend; resumable history backfill. Step-by-step local testing: `docs/LOCAL_TESTING.md`. Not yet done: push/SMS channels, live (in-play) status in the scanner. |
 | 5. Odds & assisted links | **Done (feature-complete, no live odds source verified)** | Odds sync (dedupe, withdrawal detection, heartbeat, staleness), admin bookmaker review/approval with countries, link templates and per-bookmaker settlement rule, comparison board and per-match panel (fair odds, estimated edge, history chart), guarded sportsbook link-out with responsible-gambling dialog and bet prefill, admin odds import, labelled demo odds, execution adapter intentionally disabled (section 3c). **Still needed:** a real odds source that prices five-minute markets (API-Football mapping is unverified against live data), and authorised referral agreements. |
-| 6. Subscriptions, users, notifications | **Mostly done** | Plans, Paystack checkout/verify/webhook, cancel/expiry, invoices, in-app notifications. Email/push delivery of notifications and Paystack recurring authorisation (auto-renew charge) remain. |
+| 6. Subscriptions, users, notifications | **Done (feature-complete; live Paystack not verified)** | Plans, Paystack checkout/verify/webhook, cancel/resume, saved cards, auto-renewal with retries and grace, reminders, invoices, in-app + email notifications (outbox), local demo payments (section 3d). **Still needed:** run against a Paystack test account; SMS/push; proration/refunds. |
 | 7. Admin, security, testing | **Mostly done** | Admin API + UI (users, plans, competitions, providers, jobs, thresholds, rules, models, bookmakers, audit). Remaining: Elite API keys & per-key quotas, 24h cooling-off when raising RG limits. |
 | 8. Deployment & monitoring | **Scaffolded** | Dockerfiles, Compose, CI, Sentry hook, JSON logs. Docker images were not built in the development sandbox; cloud deployment not performed. |
 
@@ -160,8 +185,7 @@ real conclusions require real, much larger histories.
    thousands of matches before they can credibly beat the baseline. **An odds source that prices five-minute markets** is the next constraint: Few bookmakers/aggregators expose them; without
    one, odds comparison and ROI analysis remain empty (by design).
 3. **Authorised sportsbook referral agreements** for deep links; execution APIs require operator approval.
-4. **Paystack account** (secret key, webhook URL). For recurring auto-charge, store authorisation codes
-   and add a renewal job (currently users renew via checkout).
+4. **Paystack account** (secret key, webhook URL). Auto-renewal charges the stored authorisation (implemented, tested with a mock; verify with Paystack test mode).
 5. **SMTP / transactional email provider** for verification, reset and notification emails.
 6. **Licensing & compliance review** for each target market (Nigeria: NLRC and state lottery boards;
    data-provider redistribution terms; NDPR for personal data).

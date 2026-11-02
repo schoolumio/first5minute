@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import utcnow
 from app.models import Plan, Subscription, User
 
@@ -37,12 +38,14 @@ def active_subscription(db: Session, user: User, now: datetime | None = None) ->
     now = now or utcnow()
     subs = db.scalars(
         select(Subscription)
-        .where(Subscription.user_id == user.id, Subscription.status.in_(["active", "cancelled"]))
+        .where(Subscription.user_id == user.id, Subscription.status.in_(["active", "cancelled", "past_due"]))
         .order_by(Subscription.current_period_end.desc().nullslast())
     ).all()
+    grace = timedelta(days=get_settings().renewal_grace_days)
     for s in subs:
-        # Cancelled subscriptions keep access until the paid period ends.
-        if s.current_period_end is None or s.current_period_end > now:
+        # Cancelled subscriptions keep access until the paid period ends; a failed renewal keeps it for the grace period.
+        end = s.current_period_end
+        if end is None or end > now or (s.status == "past_due" and end + grace > now):
             return s
     return None
 

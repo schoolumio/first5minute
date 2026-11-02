@@ -236,7 +236,7 @@ Beat runs sync every 30 min, scan at :05/:35, settlement every 15 min, training 
 
 ## 10. Real football data (API-Football)
 
-Plan limits matter: API-Football's **free plan allows 100 requests/day and 10/minute**. This app fetches match timelines in bulk (20 per
+Plan limits matter: API-Football's **free plan allows 100 requests/day and 10/minute**. The app now paces itself to stay under the per-minute limit (about one request every 7 seconds, so a day's 100 requests take roughly 10-12 minutes), which avoids wasted requests. This app fetches match timelines in bulk (20 per
 request) and only for the leagues you list, so a few leagues fit; a large backfill may take several days on the free plan (it **resumes
 where it stopped**). Paid plans have far higher limits. The adapter was written from the provider documentation and has only been tested
 against mock responses - the `provider-check` step below tells you whether real payloads parse correctly **before** you spend quota.
@@ -287,10 +287,68 @@ Do not enable `ODDS_PROVIDER=api_football` until you have confirmed your bookmak
 
 **Linux / macOS:** same commands, with `source .venv/bin/activate` and `nano ../.env`.
 
-## 11. Optional: Paystack test payments
+## 11. Subscriptions, auto-renewal and emails (Phase 6)
 
-`.env`: `PAYMENT_PROVIDER=paystack`, `PAYSTACK_SECRET_KEY=sk_test_...`. Expose the API (`ngrok http 8000`) and register
-`https://<tunnel>/api/v1/webhooks/paystack` in the Paystack dashboard. Pay with Paystack's documented **test** cards.
+You can test everything below **without a payment account** using the built-in demo payments. Nothing real is charged; the checkout page says DEMO.
+
+**Windows (cmd).** Use the same two windows as before (A = backend with the venv active, B = frontend). Skip the steps you have already done.
+
+1. Turn on demo payments. In `.env` (project root; `notepad ..\.env` from `backend`) set:
+   ```
+   PAYMENT_PROVIDER=demo
+   EMAIL_BACKEND=console
+   ```
+2. Apply the new migration (Command Prompt A, from `backend`, venv active) and start the API:
+   ```bat
+   alembic upgrade head
+   uvicorn app.main:app --reload --port 8000
+   ```
+   Start the website in Command Prompt B (`cd frontend`, `npm run dev`) and sign in at http://localhost:3000. Use a normal user (register, then confirm the
+   verification link printed in window A) or the admin account.
+3. **Buy a plan with the "works" card.** Pricing -> choose Pro -> you land on **Demo checkout** -> keep "Visa ending 4081" -> Pay (demo).
+   Expected: you return to Account -> Subscription, the plan is **Pro**, "Renews automatically on <date>", and **Saved cards** shows Visa ending 4081 with a `demo` badge.
+   Invoice history shows one `checkout` invoice marked `paid`.
+4. **See the receipt email.** Open a **third** Command Prompt (the "C" window), activate the venv and send queued emails (console backend prints them in the API log, window A):
+   ```bat
+   cd backend
+   .venv\Scripts\activate
+   python -m app.cli notify
+   ```
+   Expected output: `"sent": 1`. The message text appears in the log: "Payment received - Pro plan active ... Receipt f5-...".
+5. **Fast-forward 28 days for the reminder** (simulated clock; only works with demo payments):
+   ```bat
+   python -m app.cli renew --advance-days 28
+   ```
+   Expected: `reminders_sent: 1`. Run `python -m app.cli notify` again: "Your Pro plan renews soon ... will be charged to your visa card ending 4081".
+6. **Fast-forward to the renewal day:**
+   ```bat
+   python -m app.cli renew --advance-days 30
+   ```
+   Expected: `"charged": 1`. Reload Account -> Subscription: the date moved about 30 days later and Invoice history has an `auto-renewal` invoice marked `paid`.
+7. **Test a failing card and the grace period.** Sign in as another user (or register one). Buy Pro again, this time choosing **Mastercard ending 0408**
+   (first payment succeeds; every renewal is declined). Then run, one at a time, reading the result each time:
+   ```bat
+   python -m app.cli renew --advance-days 30
+   python -m app.cli renew --advance-days 31
+   python -m app.cli renew --advance-days 32
+   python -m app.cli renew --advance-days 34
+   ```
+   Expected: day 30, 31 and 32 each show `"failed": 1` (three attempts, then no more; `"failed"` never appears a 4th time). After the first failure Account
+   shows a red **"We could not collect your last renewal payment"** banner with a **Pay now** button, and the plan keeps working through the grace period. Day 34 shows
+   `"expired": 1` and the account returns to the Free plan. `python -m app.cli notify` sends "We couldn't renew your plan", "Renewal failed - action needed" and
+   "Subscription expired".
+   *(The simulated clock is per command; it never moves your computer's clock. Your real subscription end date does not change.)*
+8. **User controls (Account -> Subscription):** switch **Auto-renew** off and repeat step 6 with a fresh Pro user: `"charged": 0`. Cancel -> "Cancelled - access until ...",
+   then **Resume subscription** brings it back. Removing the card (trash icon) shows "No saved card - renew manually before it ends".
+9. **Admin:** Admin -> Providers & sync has `renew` and `notify` buttons that run the same jobs.
+
+To remove the test purchases, sign in as admin -> Users -> change the plan to Free, or run `python -m app.cli reset-demo` and re-register.
+
+**Real Paystack test mode (optional, later).** `.env`: `PAYMENT_PROVIDER=paystack`, `PAYSTACK_SECRET_KEY=sk_test_...`. Expose the API (`ngrok http 8000`) and register
+`https://<tunnel>/api/v1/webhooks/paystack` in the Paystack dashboard. Pay with Paystack's documented **test** cards. Test-mode renewals need the card to be
+authorised for reuse; the simulated clock (`--advance-days`) is deliberately disabled here, so a real renewal can only be seen when a period actually ends.
+
+**Linux / macOS:** identical commands, with `source .venv/bin/activate` and `nano ../.env`.
 
 ## 12. Optional: Docker Compose (not verified in the build sandbox)
 

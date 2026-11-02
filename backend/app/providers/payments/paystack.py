@@ -3,6 +3,7 @@
 Docs: https://paystack.com/docs/api/
   POST /transaction/initialize        start checkout, returns authorization_url
   GET  /transaction/verify/{ref}      confirm payment server-side
+  POST /transaction/charge_authorization   charge a saved reusable card (auto-renewal)
 Webhooks are signed with HMAC-SHA512 of the raw body using the secret key,
 sent in the ``x-paystack-signature`` header.
 """
@@ -55,6 +56,20 @@ class PaystackClient:
         if resp.status_code >= 400 or not data.get("status"):
             raise PaymentError(data.get("message") or f"HTTP {resp.status_code}")
         return data["data"]
+
+    def charge_authorization(self, email: str, amount_minor: int, currency: str, authorization_code: str, reference: str,
+                             metadata: dict) -> dict:
+        """Charge a saved reusable authorisation (no customer interaction). ``data.status`` may be success|failed|pending."""
+        resp = self.client.post("/transaction/charge_authorization", json={
+            "email": email, "amount": amount_minor, "currency": currency, "reference": reference,
+            "authorization_code": authorization_code, "metadata": metadata,
+        })
+        data = resp.json()
+        if resp.status_code >= 400 and not data.get("data"):
+            raise PaymentError(data.get("message") or f"HTTP {resp.status_code}")
+        if not data.get("status") and not data.get("data"):
+            raise PaymentError(data.get("message") or "charge failed")
+        return data.get("data") or {"status": "failed", "gateway_response": data.get("message")}
 
     def verify(self, reference: str) -> dict:
         resp = self.client.get(f"/transaction/verify/{reference}")

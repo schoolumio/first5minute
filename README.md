@@ -89,7 +89,7 @@ cd backend
 celery -A app.workers.celery_app beat -l info
 ```
 
-Schedule: fixture sync every 30 min · scanner at :05/:35 · settlement every 15 min · subscription expiry hourly · walk-forward backtest nightly.
+Schedule: fixture sync every 30 min · scanner at :05/:35 · settlement every 15 min · auto-renewal/reminders/expiry every 15 min · queued emails every 5 min · walk-forward backtest nightly.
 Weekly (Sunday 04:23 UTC) the **train** job evaluates the advanced models and promotes one only if every statistical gate passes.
 Every job can also be run on demand from **Admin → Providers & sync** or with `python -m app.cli <job>`.
 
@@ -124,7 +124,7 @@ All variables are documented in [`.env.example`](.env.example). The important on
 | `FOOTBALL_PROVIDER` | `demo`, `api_football` or `sportmonks` |
 | `API_FOOTBALL_KEY` / `SPORTMONKS_TOKEN` | provider credentials (server-side only) |
 | `ODDS_PROVIDER` | `none`, `api_football` or `demo` (synthetic, labelled - local testing only) |
-| `PAYMENT_PROVIDER`, `PAYSTACK_SECRET_KEY` | enable Paystack checkout and webhooks |
+| `PAYMENT_PROVIDER`, `PAYSTACK_SECRET_KEY` | `paystack` enables checkout, webhooks and auto-renewal; `demo` is a local simulator (never in production) |
 | `EMAIL_BACKEND` | `console` (dev - links appear in the API log) or `smtp` |
 | `COOKIE_SECURE` | `true` behind HTTPS (required in production) |
 
@@ -166,7 +166,7 @@ MLflow 3 needs a database backend such as `sqlite:///mlflow.db` or a tracking se
 cd frontend && npm test && npm run typecheck && npm run build
 ```
 
-The backend suite (162 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
+The backend suite (180 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
 rules, Poisson calculations, ingestion/normalisation, provider adapters with mock payloads, retry and
 rate limiting, data-leakage guards, prediction immutability, settlement corrections, walk-forward
 backtesting, plan permissions, admin permissions and Paystack webhooks.

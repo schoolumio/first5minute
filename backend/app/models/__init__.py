@@ -29,7 +29,7 @@ from app.models.markets import (
     PredictionOutcome,
     SettlementRule,
 )
-from app.models.user import AuthToken, Invoice, Plan, Role, Subscription, User
+from app.models.user import AuthToken, Invoice, PaymentMethod, Plan, Role, Subscription, User
 
 __all__ = [
     "AuditLog",
@@ -46,6 +46,7 @@ __all__ = [
     "ModelVersion",
     "Notification",
     "OddsSnapshot",
+    "PaymentMethod",
     "Plan",
     "PlatformSetting",
     "Prediction",

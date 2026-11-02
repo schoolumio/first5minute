@@ -163,7 +163,7 @@ function ProvidersTab() {
         <Alert tone="info" title={`Ingesting ${data.league_scope.league_ids.length} league(s)`}>League ids: {data.league_scope.league_ids.join(", ")}. All other competitions are ignored.</Alert>
       )}
       <Card>
-        <CardHeader title="Data providers" action={<div className="flex flex-wrap gap-2">{["sync", "scan", "settle", "backtest"].map((j) => (
+        <CardHeader title="Data providers" action={<div className="flex flex-wrap gap-2">{["sync", "scan", "settle", "backtest", "renew", "notify"].map((j) => (
           <Button key={j} size="sm" variant="outline" loading={a.busy === j} onClick={() => job(j)}><Play className="h-3.5 w-3.5" />{j}</Button>))}</div>} />
         <Table>
           <thead><tr><Th>Provider</Th><Th>Configured</Th><Th>Active</Th><Th>Credential</Th><Th className="text-right">OK / errors (24h)</Th><Th className="text-right">Latency</Th></tr></thead>

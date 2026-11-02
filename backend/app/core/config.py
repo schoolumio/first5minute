@@ -66,7 +66,8 @@ class Settings(BaseSettings):
     football_allow_all_leagues: bool = False   # explicit opt-in to sync every competition (high request volume)
     api_football_key: str | None = None
     api_football_base_url: str = "https://v3.football.api-sports.io"
-    api_football_requests_per_minute: int = 30
+    # Free plan allows 10/min; paid plans allow far more (raise this in .env to download faster).
+    api_football_requests_per_minute: int = 10
     sportmonks_token: str | None = None
     sportmonks_base_url: str = "https://api.sportmonks.com/v3/football"
     sportmonks_requests_per_minute: int = 50
@@ -81,9 +82,16 @@ class Settings(BaseSettings):
     ml_min_oos_sample: int = 300              # out-of-sample settled matches required before a model may be promoted
 
     # --- Payments ----------------------------------------------------------
-    payment_provider: Literal["none", "paystack"] = "none"
+    # "demo" is a clearly-labelled local simulator (no real money, test-only; refused in production).
+    payment_provider: Literal["none", "paystack", "demo"] = "none"
     paystack_secret_key: str | None = None
     paystack_base_url: str = "https://api.paystack.co"
+    # Auto-renewal: charge the saved authorisation shortly before the period ends; retry on failure; keep access during grace.
+    renewal_lead_hours: int = 2
+    renewal_retry_hours: int = 24
+    renewal_max_attempts: int = 3
+    renewal_grace_days: int = 3
+    renewal_reminder_days: int = 3
 
     @field_validator("cors_origins", "football_league_ids", mode="before")
     @classmethod
@@ -116,6 +124,8 @@ class Settings(BaseSettings):
             problems.append("COOKIE_SECURE must be true in production (HTTPS)")
         if self.email_backend != "smtp":
             problems.append("EMAIL_BACKEND must be smtp in production")
+        if self.payment_provider == "demo":
+            problems.append("PAYMENT_PROVIDER=demo is a test simulator and cannot be used in production")
         if problems:
             raise RuntimeError("Unsafe production configuration: " + "; ".join(problems))
 

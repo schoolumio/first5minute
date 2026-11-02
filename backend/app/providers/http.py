@@ -25,10 +25,17 @@ RETRYABLE = {429, 500, 502, 503, 504}
 
 
 class RateLimiter:
-    def __init__(self, per_minute: int):
-        self.capacity = max(1, per_minute)
+    """Token bucket. ``burst`` caps how many requests may be sent back-to-back (default: a full minute's worth).
+
+    Providers that enforce a rolling per-minute window (API-Football's free plan: 10/min) need a small burst,
+    otherwise a full bucket plus refill can exceed the window and trigger HTTP 429.
+    """
+
+    def __init__(self, per_minute: int, burst: int | None = None):
+        per_minute = max(1, per_minute)
+        self.capacity = max(1, min(burst or per_minute, per_minute))
         self.tokens = float(self.capacity)
-        self.rate = self.capacity / 60.0
+        self.rate = per_minute / 60.0
         self.updated = time.monotonic()
         self.lock = threading.Lock()
 
@@ -67,6 +74,7 @@ class ProviderHttpClient:
         headers: dict[str, str] | None = None,
         params: dict[str, str] | None = None,
         per_minute: int = 30,
+        burst: int | None = None,
         max_retries: int = 4,
         backoff_base: float = 1.0,
         transport: httpx.BaseTransport | None = None,
@@ -76,7 +84,7 @@ class ProviderHttpClient:
         self.provider = provider
         self.client = httpx.Client(base_url=base_url, headers=headers or {}, params=params or {}, timeout=20.0,
                                    transport=transport)
-        self.limiter = RateLimiter(per_minute)
+        self.limiter = RateLimiter(per_minute, burst)
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.sleep = sleep

@@ -232,7 +232,7 @@ def missing_events(p: Pagination = Depends(), db: Session = Depends(get_db)) -> 
 
 
 class JobIn(BaseModel):
-    job: str = Field(pattern="^(sync|scan|settle|backtest|train|odds)$")
+    job: str = Field(pattern="^(sync|scan|settle|backtest|train|odds|renew|notify)$")
 
 
 @router.post("/jobs")
