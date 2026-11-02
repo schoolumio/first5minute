@@ -50,6 +50,8 @@ frontend/
 docker-compose.yml   db, redis, api, worker, beat, web
 ```
 
+> **New here? Follow the verified step-by-step walkthrough: [`docs/LOCAL_TESTING.md`](docs/LOCAL_TESTING.md).**
+
 ## Quick start (local, without Docker)
 
 Prerequisites: Python 3.12+, Node 22+, PostgreSQL 16, Redis 7.
@@ -162,7 +164,7 @@ MLflow 3 needs a database backend such as `sqlite:///mlflow.db` or a tracking se
 cd frontend && npm test && npm run typecheck && npm run build
 ```
 
-The backend suite (97 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
+The backend suite (110 tests) covers authentication, CSRF, refresh-token rotation, five-minute cutoff
 rules, Poisson calculations, ingestion/normalisation, provider adapters with mock payloads, retry and
 rate limiting, data-leakage guards, prediction immutability, settlement corrections, walk-forward
 backtesting, plan permissions, admin permissions and Paystack webhooks.
