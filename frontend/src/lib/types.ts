@@ -97,3 +97,10 @@ export interface Conversion {
   booking: { status: "generated" | "manual" | "failed"; code: string | null; share_url: string | null; is_demo: boolean; message: string | null } | null;
   needs_decision: boolean; betslip_text: string | null; notice: string;
 }
+
+export interface CatalogPick { key: string; label: string }
+export interface CatalogMarket { key: string; label: string; picks: CatalogPick[] }
+export interface CatalogEvent {
+  id: string; home_team: string; away_team: string; start_time: string; competition: string | null; markets: CatalogMarket[];
+}
+export interface Catalog { source: string; is_demo: boolean; message: string | null; max_picks: number; events: CatalogEvent[] }

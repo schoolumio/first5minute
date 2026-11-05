@@ -54,11 +54,7 @@ export function BookingCard({ conv, onGenerate, busy }: { conv: Conversion; onGe
               <CopyButton text={b.code} label="Copy booking code" />
               {b.share_url && <a className="text-sm text-brand-400 hover:underline" href={b.share_url} target="_blank" rel="noopener noreferrer">Open the shared slip <ExternalLink className="inline h-3.5 w-3.5" aria-hidden /></a>}
             </div>
-            {dest.website && (
-              <a className="inline-flex items-center gap-1 text-sm text-brand-400 hover:underline" href={dest.website} target="_blank" rel="noopener noreferrer">
-                Open {dest.name} to load the code <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-              </a>
-            )}
+            <p className="text-sm text-muted">Copy the code, then enter it on {dest.name}: look for “Booking code” or “Load code” on the betslip. Check every selection and price there before you bet.</p>
           </>
         )}
         {b?.status === "manual" && (
@@ -126,7 +122,7 @@ function OddsCell({ s }: { s: ConversionSelection }) {
   return (
     <div className="tabular text-right">
       <p className="font-semibold">{s.odds.destination ?? "-"}</p>
-      <p className="text-xs text-subtle">was {s.odds.original ?? "-"}</p>
+      {s.odds.original && <p className="text-xs text-subtle">was {s.odds.original}</p>}
       {change && <p className={s.odds.change === "up" ? "text-xs text-brand-400" : "text-xs text-warn"}><span className="sr-only">Odds changed: </span>{s.odds.change === "up" ? "▲ higher" : "▼ lower"}</p>}
     </div>
   );
@@ -158,7 +154,7 @@ export function SelectionsList({ conv }: { conv: Conversion }) {
               <Fixture home={s.source.home_team} away={s.source.away_team} comp={s.source.competition} start={s.source.start_time} />
               <StatusBadge status={s.status} />
             </div>
-            <p className="text-sm"><span className="text-muted">{s.source.market_name}:</span> <span className="font-semibold">{s.source.outcome}</span> <span className="tabular text-subtle">@ {s.source.odds ?? "-"}</span></p>
+            <p className="text-sm"><span className="text-muted">{s.source.market_name}:</span> <span className="font-semibold">{s.source.outcome}</span> {s.source.odds && <span className="tabular text-subtle">@ {s.source.odds}</span>}</p>
             {hasDest && (
               <div className="rounded-[var(--radius-md)] border border-border bg-surface-2 p-3">
                 <p className="mb-1 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-subtle"><ArrowRight className="h-3 w-3" aria-hidden />{conv.destination.name}</p>

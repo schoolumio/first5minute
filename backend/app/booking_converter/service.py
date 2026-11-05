@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.booking_converter.adapters.base import BookmakerAdapter
 from app.booking_converter.adapters.registry import all_adapters, get_adapter
+from app.booking_converter.adapters.ticket import TICKET_SOURCE
+from app.booking_converter.catalog import load_catalog, selection_for
 from app.booking_converter.domain import Pick, Selection
 from app.booking_converter.errors import (
     ConversionBusy,
@@ -26,10 +28,12 @@ from app.booking_converter.errors import (
     GenerationFailed,
     IntegrationUnavailable,
     InvalidBookingCode,
+    InvalidTicket,
     NeedsDecision,
     NothingToConvert,
     SameBookmaker,
     SelfExcluded,
+    UnsupportedBookmaker,
     UpstreamError,
     WrongState,
 )
@@ -47,6 +51,7 @@ log = get_logger(__name__)
 NOTICE = ("18+. First5Minute only converts betslips. It never places bets or holds money. Odds change quickly: check every "
           "selection and price on the bookmaker before you bet, and only stake what you can afford to lose.")
 MAX_GENERATION_ATTEMPTS = 3
+MAX_TICKET_PICKS = 20
 
 
 def _money(d: Decimal | None) -> str | None:
@@ -122,6 +127,8 @@ class ConversionService:
     def bookmakers(self) -> list[dict]:
         rows = []
         for a in all_adapters().values():
+            if a.hidden:
+                continue
             info = _info(a)
             if self.user.is_admin and not a.available():
                 info["setup"] = a.setup_note
@@ -229,6 +236,52 @@ class ConversionService:
             return self.view(rec)
         finally:
             self.store.release(f"lock:{h}")
+
+    # ---- ticket flow: the punter picks games on First5Minute, then a bookmaker -------------------------
+    def catalog(self) -> dict:
+        self._guard()
+        cat = load_catalog(self.db, self.store)
+        return {"source": cat.source, "is_demo": cat.is_demo, "message": cat.message, "max_picks": MAX_TICKET_PICKS,
+                "events": [{**e.to_dict(), "markets": e.markets()} for e in cat.events]}
+
+    def ticket(self, destination: str, picks: list[tuple[str, str]]) -> dict:
+        """Start a conversion from picks made on First5Minute. Selections are rebuilt server-side from the catalogue."""
+        t0 = time.monotonic()
+        self._guard()
+        dst = get_adapter(destination)
+        if dst.hidden:
+            raise UnsupportedBookmaker()
+        if not (dst.capabilities.can_find_events and dst.available()):
+            raise IntegrationUnavailable(f"{dst.name} can't be used yet because no official integration is connected.")
+        if not picks:
+            raise InvalidTicket("Pick at least one game first.")
+        if len(picks) > MAX_TICKET_PICKS:
+            raise InvalidTicket(f"A ticket can have at most {MAX_TICKET_PICKS} games.")
+        events = {e.id: e for e in load_catalog(self.db, self.store).events}
+        seen: set[str] = set()
+        selections: list[Selection] = []
+        for event_id, key in picks:
+            event = events.get(event_id)
+            sel = selection_for(event, key) if event else None
+            if event is None or sel is None:
+                raise InvalidTicket("One of the picks is no longer available. Refresh the games and try again.")
+            if event_id in seen:
+                raise InvalidTicket("Choose only one pick per game.")
+            seen.add(event_id)
+            selections.append(sel)
+        src = get_adapter(TICKET_SOURCE)
+        row = BookingConversion(user_id=self.user.id, source_bookmaker=src.code, destination_bookmaker=dst.code, status="started",
+                                selections_total=len(selections), is_demo=dst.is_demo)
+        self.db.add(row)
+        self.db.flush()
+        rec = {"id": hashlib.sha256(f"ticket{self.user.id}{time.time_ns()}".encode()).hexdigest()[:24], "owner": self.user.id,
+               "source": src.code, "destination": dst.code, "state": "decoded", "selections": [x.to_dict() for x in selections],
+               "results": None, "picks": {}, "booking": None, "is_demo": dst.is_demo, "history_id": row.id, "gen_attempts": 0,
+               "created_at": utcnow().isoformat()}
+        self._save(rec)
+        self.db.commit()
+        log.info("booking_ticket_started", destination=dst.code, selections=len(selections), ms=round((time.monotonic() - t0) * 1000))
+        return self.view(rec)
 
     # ---- step 2: match ---------------------------------------------------------------------------------
     def match(self, conversion_id: str) -> dict:

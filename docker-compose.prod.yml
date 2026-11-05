@@ -1,0 +1,90 @@
+# Production / staging on ONE server: Postgres + Redis + API + workers + website, behind Caddy which gets and renews HTTPS
+# certificates automatically. Only ports 80 and 443 are open to the internet.
+#
+#   cp .env.production.example .env      (fill it in)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml exec api python -m app.cli create-admin --email you@example.com
+#   docker compose -f docker-compose.prod.yml exec api python -m app.cli doctor
+#
+# NOT built or run in the development sandbox (no Docker there): treat the first build as a test and read docs/GO_LIVE.md.
+x-api-env: &api-env
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://five:${POSTGRES_PASSWORD}@db:5432/projectfive
+    REDIS_URL: redis://redis:6379/0
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: five
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: projectfive
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U five -d projectfive"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  api:
+    <<: *api-env
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes: [modelstore:/app/model_store]
+
+  worker:
+    <<: *api-env
+    build: ./backend
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker -l info -Q default,ingestion --concurrency 2
+    depends_on: [api]
+    volumes: [modelstore:/app/model_store]
+
+  beat:
+    <<: *api-env
+    build: ./backend
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app beat -l info
+    depends_on: [api]
+
+  web:
+    build:
+      context: ./frontend
+      args: { BACKEND_URL: "http://api:8000" }
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://api:8000
+    depends_on: [api]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web]
+
+volumes:
+  pgdata:
+  redisdata:
+  modelstore:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,6 @@
+# Reverse proxy with automatic HTTPS. DOMAIN comes from .env (for example app.first5minute.com).
+# The website container proxies /api/v1/* to the API, so one public address is all that is needed.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy web:3000
+}

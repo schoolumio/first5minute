@@ -169,7 +169,7 @@ real conclusions require real, much larger histories.
 Package `backend/app/booking_converter/`: `adapters/` (one `BookmakerAdapter` per bookmaker + registry; the seven Nigerian bookmakers are
 registered as "not connected", a gated demo simulator exists for local testing), `canonical.py` (market reduction), `teams.py` (name matching),
 `matcher.py` (event + selection matching), `service.py` (decode -> match -> generate workflow), `store.py` (short-lived sessions and duplicate
-guards). API `api/v1/booking_converter.py`, history table `booking_conversions` (migration 0007, counts only), UI `/booking-code-converter`.
+guards). API `api/v1/booking_converter.py`, history table `booking_conversions` (migration 0007, counts only), UI `/booking-code-converter` with two tabs: **Build a ticket** (catalogue in `catalog.py`: games from the football provider or fictional demo games -> `POST /ticket`) and **Convert a code**. `app/ops/doctor.py` (`python -m app.cli doctor`) reports what is live on a deployment; deployment files: `docker-compose.prod.yml`, `Caddyfile`, `.env.production.example`, guide `docs/GO_LIVE.md`.
 No bookmaker integration is connected, so no real conversion is available until one is; see `docs/BOOKING_CODE_CONVERTER.md`.
 
 ## 4. Phase status

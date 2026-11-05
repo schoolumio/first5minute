@@ -17,6 +17,16 @@ First5Minute has no official API access to any of the seven. This project delibe
 scraping: they break without notice, can breach a bookmaker's terms, and are usually behind bot protection / CAPTCHAs, which we must not bypass.
 In the UI these bookmakers show "not connected yet" and conversions that involve them stop with a clear message.
 
+## Two ways to use it
+
+1. **Build a ticket** (default tab): the punter picks games from the First5Minute catalogue (upcoming matches from your football data
+   provider; fictional in demo mode), chooses a bookmaker and presses **Generate code**. Picks are one per game from a fixed menu (1X2, double
+   chance, both teams to score, total goals 0.5-4.5). The server rebuilds every selection from the catalogue (it never trusts team names or
+   markets sent by the browser), matches it at the chosen bookmaker, and, if everything matched, asks that bookmaker for a real code. The punter
+   copies the code and enters it on the bookmaker themselves. Prices shown are the bookmaker's, after matching.
+   API: `GET /catalog`, `POST /ticket` then the same `/match` and `/generate` steps below.
+2. **Convert a code**: paste a code from one bookmaker and convert it to another.
+
 ## How a conversion works
 
 1. `POST /decode` `{code, source, destination}`: validates, reads the source slip via the source adapter -> normalised selections.

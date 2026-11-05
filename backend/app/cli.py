@@ -41,6 +41,29 @@ def create_admin(email: str, password: str | None) -> None:
         print(f"Admin ready: {user.email}")
 
 
+def create_user(email: str, password: str | None, plan: str) -> None:
+    from app.models import Plan, Subscription
+
+    password = password or getpass.getpass("Password: ")
+    errs = password_policy_errors(password)
+    if errs:
+        sys.exit("Password " + ", ".join(errs))
+    with SessionLocal() as db:
+        if db.scalar(select(User).where(User.email == email.lower())):
+            sys.exit("A user with that email already exists.")
+        role = db.scalar(select(Role).where(Role.name == "user"))
+        user = User(email=email.lower(), password_hash=hash_password(password), role_id=role.id, full_name=email.split("@")[0],
+                    email_verified_at=utcnow(), notification_prefs={})
+        db.add(user)
+        db.flush()
+        if plan != "free":
+            p = db.scalar(select(Plan).where(Plan.code == plan))
+            db.add(Subscription(user_id=user.id, plan_id=p.id, status="active", current_period_start=utcnow(),
+                                current_period_end=utcnow() + timedelta(days=30), payment_provider="manual"))
+        db.commit()
+        print(f"User ready: {user.email} (plan: {plan}, email verified)")
+
+
 def reset_demo(db) -> None:
     """Remove all demo-flagged data (never touches live provider data)."""
     db.execute(text("SET LOCAL projectfive.allow_prediction_delete = 'on'"))
@@ -120,6 +143,11 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("reset-demo")
     for job in ("sync", "scan", "settle", "odds", "expire", "notify"):
         sub.add_parser(job)
+    sub.add_parser("doctor", help="readiness check: what is live on this deployment and what is not (exit 1 on any FAIL)")
+    cu = sub.add_parser("create-user", help="create a verified normal user (for teammates testing a shared deployment)")
+    cu.add_argument("--email", required=True)
+    cu.add_argument("--password")
+    cu.add_argument("--plan", choices=["free", "starter", "pro", "elite"], default="free")
     rn = sub.add_parser("renew", help="reminders + auto-renewal charges + expiry. --as-of simulates a later date (demo payments only)")
     rn.add_argument("--as-of", help="pretend it is this UTC time, e.g. 2026-12-01T09:00 (refused unless PAYMENT_PROVIDER=demo)")
     rn.add_argument("--advance-days", type=float, help="pretend N days have passed, e.g. 30 (refused unless PAYMENT_PROVIDER=demo)")
@@ -155,6 +183,15 @@ def main(argv: list[str] | None = None) -> None:
         with SessionLocal() as db:
             reset_demo(db)
         print("Demo data removed")
+    elif args.cmd == "doctor":
+        from app.ops.doctor import FAIL, render, run_all
+
+        checks = run_all()
+        print(render(checks))
+        if any(c.status == FAIL for c in checks):
+            sys.exit(1)
+    elif args.cmd == "create-user":
+        create_user(args.email, args.password, args.plan)
     elif args.cmd == "renew":
         from app.workers.jobs import job_renew
 

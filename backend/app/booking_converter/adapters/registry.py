@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.booking_converter.adapters.base import BookmakerAdapter
 from app.booking_converter.adapters.real import REAL_ADAPTERS
+from app.booking_converter.adapters.ticket import TICKET_SOURCE, TicketSource
 from app.booking_converter.errors import UnsupportedBookmaker
 from app.core.config import get_settings
 
@@ -20,6 +21,7 @@ def clear_extra_adapters() -> None:
 
 def all_adapters() -> dict[str, BookmakerAdapter]:
     adapters: dict[str, BookmakerAdapter] = {cls.code: cls() for cls in REAL_ADAPTERS}
+    adapters[TICKET_SOURCE] = TicketSource()
     if get_settings().booking_converter_demo and not get_settings().is_production:
         from app.booking_converter.adapters.demo import demo_adapters
 

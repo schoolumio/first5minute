@@ -84,3 +84,8 @@ class WrongState(ConverterError):
 class SelfExcluded(ConverterError):
     status_code, code = 403, "self_excluded"
     default_message = "You are self-excluded, so the booking code converter is disabled until your exclusion ends."
+
+
+class InvalidTicket(ConverterError):
+    status_code, code = 422, "invalid_ticket"
+    default_message = "That ticket isn't valid."

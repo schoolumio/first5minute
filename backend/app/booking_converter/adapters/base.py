@@ -32,6 +32,7 @@ class BookmakerAdapter:
     website: str | None = None
     country: str = "NG"
     is_demo: bool = False
+    hidden: bool = False              # internal adapters (e.g. the ticket source) never appear in bookmaker lists
     capabilities: Capabilities = Capabilities()
     code_pattern: str = r"^[A-Z0-9-]{4,24}$"
     setup_note: str = ""              # shown to administrators only: what is needed to connect this bookmaker
