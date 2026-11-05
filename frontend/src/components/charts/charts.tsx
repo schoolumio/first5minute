@@ -22,9 +22,9 @@ import {
   YAxis,
 } from "recharts";
 
-export const SERIES = { home: "#55a11f", away: "#3b82f6" } as const;
-const AXIS = { stroke: "#64748b", fontSize: 11, tickLine: false, axisLine: false } as const;
-const GRID = { stroke: "#1e2d47", strokeDasharray: "0", vertical: false } as const;
+export const SERIES = { home: "var(--chart-home)", away: "var(--chart-away)" } as const;
+const AXIS = { stroke: "var(--chart-axis)", fontSize: 11, tickLine: false, axisLine: false } as const;
+const GRID = { stroke: "var(--chart-grid)", strokeDasharray: "0", vertical: false } as const;
 
 function TooltipBox({ active, payload, label, fmt }: {
   active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string; fmt?: (v: number) => string;
@@ -54,8 +54,8 @@ export function TimingChart({ home, away, homeName, awayName }: {
         <CartesianGrid {...GRID} />
         <XAxis dataKey="bucket" {...AXIS} />
         <YAxis allowDecimals={false} {...AXIS} />
-        <Tooltip cursor={{ fill: "rgb(255 255 255 / 0.04)" }} content={<TooltipBox fmt={(v) => `${v} matches`} />} />
-        <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} iconType="square" iconSize={8} />
+        <Tooltip cursor={{ fill: "var(--chart-hover)" }} content={<TooltipBox fmt={(v) => `${v} matches`} />} />
+        <Legend wrapperStyle={{ fontSize: 12, color: "var(--chart-text)" }} iconType="square" iconSize={8} />
         <Bar dataKey={homeName} fill={SERIES.home} radius={[4, 4, 0, 0]} maxBarSize={18} />
         <Bar dataKey={awayName} fill={SERIES.away} radius={[4, 4, 0, 0]} maxBarSize={18} />
       </BarChart>
@@ -74,8 +74,8 @@ export function ComparisonChart({ rows, homeName, awayName }: {
         <CartesianGrid {...GRID} />
         <XAxis dataKey="metric" {...AXIS} interval={0} />
         <YAxis {...AXIS} tickFormatter={(v) => `${Math.round(v * 100)}%`} domain={[0, 1]} />
-        <Tooltip cursor={{ fill: "rgb(255 255 255 / 0.04)" }} content={<TooltipBox fmt={(v) => `${(v * 100).toFixed(1)}%`} />} />
-        <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} iconType="square" iconSize={8} />
+        <Tooltip cursor={{ fill: "var(--chart-hover)" }} content={<TooltipBox fmt={(v) => `${(v * 100).toFixed(1)}%`} />} />
+        <Legend wrapperStyle={{ fontSize: 12, color: "var(--chart-text)" }} iconType="square" iconSize={8} />
         <Bar dataKey={homeName} fill={SERIES.home} radius={[4, 4, 0, 0]} maxBarSize={22} />
         <Bar dataKey={awayName} fill={SERIES.away} radius={[4, 4, 0, 0]} maxBarSize={22} />
       </BarChart>
@@ -94,9 +94,9 @@ export function CalibrationChart({ bins }: {
   return (
     <ResponsiveContainer width="100%" height={260}>
       <ComposedChart margin={{ top: 8, right: 12, left: -10, bottom: 4 }}>
-        <CartesianGrid stroke="#1e2d47" />
+        <CartesianGrid stroke="var(--chart-grid)" />
         <XAxis type="number" dataKey="x" domain={domain} {...AXIS} tickFormatter={(v) => `${Math.round(v * 100)}%`}
-          label={{ value: "Predicted", position: "insideBottom", offset: -2, fill: "#64748b", fontSize: 11 }} />
+          label={{ value: "Predicted", position: "insideBottom", offset: -2, fill: "var(--chart-axis)", fontSize: 11 }} />
         <YAxis type="number" domain={domain} {...AXIS} tickFormatter={(v) => `${Math.round(v * 100)}%`} />
         <Tooltip
           content={({ active, payload }) => {
@@ -111,8 +111,8 @@ export function CalibrationChart({ bins }: {
             );
           }}
         />
-        <Line data={diag} dataKey="ideal" stroke="#64748b" strokeDasharray="4 4" strokeWidth={1.5} dot={false} isAnimationActive={false} legendType="none" />
-        <Scatter data={data} dataKey="observed" fill={SERIES.home} stroke="#0b1424" strokeWidth={2} />
+        <Line data={diag} dataKey="ideal" stroke="var(--chart-axis)" strokeDasharray="4 4" strokeWidth={1.5} dot={false} isAnimationActive={false} legendType="none" />
+        <Scatter data={data} dataKey="observed" fill={SERIES.home} stroke="var(--chart-ring)" strokeWidth={2} />
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -131,7 +131,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
         <XAxis dataKey="label" {...AXIS} />
         <YAxis {...AXIS} domain={[lo, 1]} tickFormatter={(v) => `${Math.round(v * 100)}%`} />
         <Tooltip
-          cursor={{ stroke: "#2a3d5c" }}
+          cursor={{ stroke: "var(--chart-cursor)" }}
           content={({ active, payload }) => {
             const d = payload?.[0]?.payload as (TrendPoint & { label: string }) | undefined;
             if (!active || !d) return null;
@@ -145,9 +145,9 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
             );
           }}
         />
-        <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} iconType="plainline" />
-        <Line name="Model estimate" dataKey="mean_predicted" stroke={SERIES.home} strokeWidth={2} dot={{ r: 4, fill: SERIES.home, stroke: "#0b1424", strokeWidth: 2 }} isAnimationActive={false} />
-        <Line name="Observed hit rate" dataKey="hit_rate" stroke={SERIES.away} strokeWidth={2} dot={{ r: 4, fill: SERIES.away, stroke: "#0b1424", strokeWidth: 2 }} isAnimationActive={false} />
+        <Legend wrapperStyle={{ fontSize: 12, color: "var(--chart-text)" }} iconType="plainline" />
+        <Line name="Model estimate" dataKey="mean_predicted" stroke={SERIES.home} strokeWidth={2} dot={{ r: 4, fill: SERIES.home, stroke: "var(--chart-ring)", strokeWidth: 2 }} isAnimationActive={false} />
+        <Line name="Observed hit rate" dataKey="hit_rate" stroke={SERIES.away} strokeWidth={2} dot={{ r: 4, fill: SERIES.away, stroke: "var(--chart-ring)", strokeWidth: 2 }} isAnimationActive={false} />
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -164,9 +164,9 @@ export function OddsHistoryChart({ points, fair }: { points: { t: string; best: 
         <CartesianGrid {...GRID} />
         <XAxis dataKey="label" {...AXIS} minTickGap={48} />
         <YAxis {...AXIS} domain={[lo, hi]} tickFormatter={(v) => v.toFixed(2)} />
-        <Tooltip cursor={{ stroke: "#2a3d5c" }} content={<TooltipBox fmt={(v) => v.toFixed(2)} />} />
-        {fair && <ReferenceLine y={fair} stroke="#94a3b8" strokeDasharray="5 4" label={{ value: `Model fair odds ${fair.toFixed(2)}`, fill: "#94a3b8", fontSize: 11, position: "insideTopRight" }} />}
-        <Line name="Best available odds" dataKey="best" type="stepAfter" stroke={SERIES.away} strokeWidth={2} dot={{ r: 3, fill: SERIES.away, stroke: "#0b1424", strokeWidth: 2 }} isAnimationActive={false} connectNulls />
+        <Tooltip cursor={{ stroke: "var(--chart-cursor)" }} content={<TooltipBox fmt={(v) => v.toFixed(2)} />} />
+        {fair && <ReferenceLine y={fair} stroke="var(--chart-text)" strokeDasharray="5 4" label={{ value: `Model fair odds ${fair.toFixed(2)}`, fill: "var(--chart-text)", fontSize: 11, position: "insideTopRight" }} />}
+        <Line name="Best available odds" dataKey="best" type="stepAfter" stroke={SERIES.away} strokeWidth={2} dot={{ r: 3, fill: SERIES.away, stroke: "var(--chart-ring)", strokeWidth: 2 }} isAnimationActive={false} connectNulls />
       </ComposedChart>
     </ResponsiveContainer>
   );

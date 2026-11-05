@@ -6,6 +6,7 @@ import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { ButtonLink } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
+import { ThemeToggle } from "@/lib/theme";
 
 const NAV = [
   { href: "/#how-it-works", label: "How it works" },
@@ -32,6 +33,7 @@ export function MarketingHeader() {
           ))}
         </nav>
         <div className="hidden items-center gap-2 md:flex">
+          <ThemeToggle />
           {user ? (
             <ButtonLink href="/dashboard" size="sm">
               Open dashboard
@@ -59,6 +61,7 @@ export function MarketingHeader() {
             </Link>
           ))}
           <div className="mt-2 flex gap-2">
+            <ThemeToggle className="border border-border-strong" />
             <ButtonLink href={user ? "/dashboard" : "/login"} variant="outline" size="sm" className="flex-1">
               {user ? "Dashboard" : "Sign in"}
             </ButtonLink>

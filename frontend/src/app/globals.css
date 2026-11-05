@@ -11,6 +11,7 @@
   --color-surface-3: #16233a;
   --color-surface-4: #1c2d4a;
   --color-turf: #0b2412;
+  --color-on-brand: #06110a;
   --color-border: #1e2d47;
   --color-border-strong: #2a3d5c;
 
@@ -58,6 +59,7 @@
 
 @layer base {
   html { color-scheme: dark; }
+  html[data-theme="light"] { color-scheme: light; }
   body {
     background: var(--color-bg);
     color: var(--color-fg);
@@ -67,6 +69,7 @@
   }
   /* Native dropdown popups ignore parent colours on Windows/Chrome: give them the dark surface explicitly. */
   select { color-scheme: dark; }
+  html[data-theme="light"] select { color-scheme: light; }
   select option, select optgroup { background-color: var(--color-surface-2); color: var(--color-fg); }
   select option:disabled { color: var(--color-subtle); }
   select option:checked { background-color: var(--color-surface-3); }
@@ -132,3 +135,69 @@
 .dial-sweep { transform-origin: 110px 110px; animation: dial-sweep 5s linear infinite; }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .marquee-track { animation: marquee 40s linear infinite; }
+
+/* ------------------------------------------------------------------
+   Chart tokens (read by Recharts via var()) and the LIGHT theme.
+   Light = white canvas, crisp slate text, hairline borders, deeper
+   greens so text and fills keep proper contrast on white.
+   ------------------------------------------------------------------ */
+:root {
+  --chart-home: #55a11f; --chart-away: #3b82f6;
+  --chart-axis: #64748b; --chart-grid: #1e2d47; --chart-text: #94a3b8;
+  --chart-ring: #0b1424; --chart-cursor: #2a3d5c; --chart-hover: rgb(255 255 255 / 0.04);
+}
+:root[data-theme="light"] {
+  --color-bg: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #f6f8fb;
+  --color-surface-3: #eef2f7;
+  --color-surface-4: #dde4ee;
+  --color-turf: #eef7ea;
+  --color-border: #e3e8ef;
+  --color-border-strong: #cbd5e1;
+  --color-on-brand: #ffffff;
+
+  --color-fg: #0b1220;
+  --color-muted: #475569;
+  --color-subtle: #64748b;
+
+  --color-brand-50: #f1fbe9;
+  --color-brand-100: #def5cb;
+  --color-brand-300: #2c6b12;
+  --color-brand-400: #38821a;
+  --color-brand-500: #2f7a16;
+  --color-brand-600: #286a13;
+  --color-brand-700: #1f5410;
+  --color-brand-900: #e6f4dc;
+
+  --color-info: #1d4ed8;
+  --color-warn: #a16207;
+  --color-danger: #c62828;
+  --color-demo: #6d28d9;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.05), 0 8px 24px -14px rgb(15 23 42 / 0.14);
+  --shadow-glow: 0 0 0 1px rgb(47 122 22 / 0.3), 0 10px 30px -12px rgb(47 122 22 / 0.35);
+
+  --chart-home: #2f7a16; --chart-away: #2563eb;
+  --chart-axis: #64748b; --chart-grid: #e3e8ef; --chart-text: #475569;
+  --chart-ring: #ffffff; --chart-cursor: #cbd5e1; --chart-hover: rgb(15 23 42 / 0.04);
+}
+:root[data-theme="light"] .panel { background: var(--color-surface); }
+:root[data-theme="light"] .bg-stadium {
+  background:
+    radial-gradient(900px 420px at 88% -8%, rgb(47 122 22 / 0.09), transparent 62%),
+    radial-gradient(700px 420px at -8% 4%, rgb(37 99 235 / 0.05), transparent 60%),
+    linear-gradient(180deg, #ffffff, #f6f8fb);
+}
+:root[data-theme="light"] .pitch-lines {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 760 520' fill='none' stroke='%230f172a' stroke-opacity='0.07' stroke-width='2'%3E%3Crect x='20' y='20' width='720' height='480' rx='4'/%3E%3Cpath d='M380 20v480'/%3E%3Ccircle cx='380' cy='260' r='86'/%3E%3Ccircle cx='380' cy='260' r='4' fill='%230f172a' fill-opacity='0.07'/%3E%3Cpath d='M20 130h120v260H20M740 130H620v260h120M20 200h48v120H20M740 200h-48v120h48'/%3E%3C/svg%3E");
+}
+:root[data-theme="light"] .pitch-grid {
+  background-image:
+    linear-gradient(rgb(15 23 42 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(15 23 42 / 0.04) 1px, transparent 1px);
+}
+:root[data-theme="light"] ::selection { background: rgb(47 122 22 / 0.22); }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--color-surface-4); border-color: var(--color-bg); }
+.dial-tick { stroke: var(--chart-axis); stroke-opacity: 0.5; }
+.dial-ring { stroke: var(--color-border-strong); stroke-opacity: 0.5; }

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
 import { Alert, Skeleton } from "@/components/ui/feedback";
 import { api } from "@/lib/api";
@@ -63,7 +64,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                   {active && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r bg-brand-500 shadow-[0_0_12px_rgb(108_194_46/0.8)]" aria-hidden />}
                   <Icon className={cn("h-4 w-4 shrink-0", active ? "text-brand-400" : "text-subtle group-hover:text-muted")} aria-hidden />
                   {label}
-                  {href === "/ticket" && ticket.length > 0 && <span className="numeral ml-auto flex h-5 min-w-5 items-center justify-center rounded-[4px] bg-brand-500 px-1 text-xs text-[#06110a]">{ticket.length}</span>}
+                  {href === "/ticket" && ticket.length > 0 && <span className="numeral ml-auto flex h-5 min-w-5 items-center justify-center rounded-[4px] bg-brand-500 px-1 text-xs text-on-brand">{ticket.length}</span>}
                 </Link>
               );
             })}
@@ -221,10 +222,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="text-xs text-subtle">Match-day view · all times local</span>
             </div>
             <div className="flex items-center gap-1.5">
+              <ThemeToggle />
               <Notifications />
               <span className="mx-1 hidden h-6 w-px bg-border sm:block" />
               <span className="hidden max-w-40 truncate text-sm text-muted md:inline">{user.full_name || user.email}</span>
-              <span className="numeral flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs text-[#06110a]" aria-hidden>{initials}</span>
+              <span className="numeral flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs text-on-brand" aria-hidden>{initials}</span>
               <Button variant="ghost" size="icon" onClick={signOut} aria-label="Sign out" title="Sign out">
                 <LogOut className="h-4 w-4" />
               </Button>

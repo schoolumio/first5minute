@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Lock, Scale, ShieldCheck } from "lucide-react";
 import { KickoffDial } from "@/components/marketing/kickoff-dial";
+import { ThemeToggle } from "@/lib/theme";
 import { Logo } from "@/components/brand/logo";
 import { ResponsibleNote } from "@/components/layout/marketing";
 
@@ -26,7 +27,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
         <p className="text-xs text-subtle">18+ only. Statistical estimates, never guarantees.</p>
       </aside>
-      <div className="flex flex-col items-center justify-center px-4 py-12 sm:px-8">
+      <div className="relative flex flex-col items-center justify-center px-4 py-12 sm:px-8">
+        <ThemeToggle className="absolute right-4 top-4 sm:right-8 sm:top-6" />
         <Link href="/" className="mb-8 lg:hidden" aria-label="First5Minute home"><Logo /></Link>
         <div className="w-full max-w-md">
           {children}

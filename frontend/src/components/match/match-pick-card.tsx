@@ -33,7 +33,7 @@ function PickTile({ market, p }: { market: Market; p?: Prediction }) {
           <span className="block truncate text-xs font-semibold">{t.title}</span>
           <span className="block truncate text-[11px] text-subtle">{t.sub}</span>
         </span>
-        <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[#06110a]", on ? "border-brand-500 bg-brand-500" : "border-border-strong text-transparent group-hover:border-brand-500/60")} aria-hidden>
+        <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-on-brand", on ? "border-brand-500 bg-brand-500" : "border-border-strong text-transparent group-hover:border-brand-500/60")} aria-hidden>
           <Check className="h-3 w-3" />
         </span>
       </span>

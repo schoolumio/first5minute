@@ -22,7 +22,7 @@ export function Stepper({ step }: { step: 1 | 2 | 3 }) {
         return (
           <li key={label} className="flex items-center gap-2" aria-current={active ? "step" : undefined}>
             <span className={cn("flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-bold",
-              done ? "border-brand-500 bg-brand-500 text-[#06110a]" : active ? "border-brand-500 text-brand-400" : "border-border-strong text-subtle")}>
+              done ? "border-brand-500 bg-brand-500 text-on-brand" : active ? "border-brand-500 text-brand-400" : "border-border-strong text-subtle")}>
               {done ? <Check className="h-3.5 w-3.5" aria-hidden /> : n}
             </span>
             <span className={cn("font-medium", active ? "text-fg" : done ? "text-muted" : "text-subtle", !active && "hidden sm:inline")}>{label}</span>

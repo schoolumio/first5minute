@@ -4,7 +4,7 @@ export function KickoffDial({ size = 220, label = "05:00" }: { size?: number; la
   return (
     <div className="relative" style={{ width: size, height: size }} role="img" aria-label="A five-minute match clock">
       <svg viewBox="0 0 220 220" width={size} height={size} className="-rotate-90" aria-hidden>
-        <circle cx="110" cy="110" r="104" fill="none" stroke="rgb(255 255 255 / 0.06)" strokeWidth="1" />
+        <circle cx="110" cy="110" r="104" fill="none" className="dial-ring" strokeWidth="1" />
         {[0, 1, 2, 3, 4].map((i) => (
           <circle key={i} cx="110" cy="110" r={r} fill="none" strokeWidth="10" strokeLinecap="butt"
             stroke={i === 0 ? "var(--color-brand-500)" : "var(--color-surface-4)"}
@@ -16,7 +16,7 @@ export function KickoffDial({ size = 220, label = "05:00" }: { size?: number; la
           const a = (i / 60) * Math.PI * 2;
           const major = i % 12 === 0;
           const r1 = 98, r2 = major ? 92 : 95;
-          return <line key={i} x1={110 + r1 * Math.cos(a)} y1={110 + r1 * Math.sin(a)} x2={110 + r2 * Math.cos(a)} y2={110 + r2 * Math.sin(a)} stroke="rgb(255 255 255 / 0.18)" strokeWidth={major ? 1.5 : 0.8} />;
+          return <line key={i} x1={110 + r1 * Math.cos(a)} y1={110 + r1 * Math.sin(a)} x2={110 + r2 * Math.cos(a)} y2={110 + r2 * Math.sin(a)} className="dial-tick" strokeWidth={major ? 1.5 : 0.8} />;
         })}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">

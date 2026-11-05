@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "@/lib/auth";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,12 +10,14 @@ export const metadata: Metadata = {
   icons: { icon: "/icon.svg" },
 };
 
-export const viewport: Viewport = { themeColor: "#050b17", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
       <head>
+        <meta name="theme-color" content="#050b17" />
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link

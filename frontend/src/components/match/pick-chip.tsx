@@ -23,7 +23,7 @@ export function PickChip({ market, p, className }: { market: Market; p?: Predict
       <span className={cn("absolute inset-y-0 left-0 w-[3px]", tone)} aria-hidden />
       <span className="flex items-center justify-between gap-2">
         <span className="font-[family-name:var(--font-mono)] text-[10px] font-semibold uppercase tracking-wider text-muted">{SHORT[market]}</span>
-        <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", on ? "border-brand-500 bg-brand-500 text-[#06110a]" : "border-border-strong text-transparent")} aria-hidden><Check className="h-2.5 w-2.5" /></span>
+        <span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", on ? "border-brand-500 bg-brand-500 text-on-brand" : "border-border-strong text-transparent")} aria-hidden><Check className="h-2.5 w-2.5" /></span>
       </span>
       <span className="numeral mt-0.5 block text-[26px] leading-none">{pct(p.probability)}</span>
     </button>

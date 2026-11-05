@@ -104,7 +104,7 @@ function Crest({ name, className = "" }: { name: string; className?: string }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
   const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   return (
-    <span aria-hidden className={`numeral flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 text-xl text-fg sm:h-16 sm:w-16 ${className}`}
+    <span aria-hidden className={`numeral flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 text-xl text-white sm:h-16 sm:w-16 ${className}`}
       style={{ borderColor: `hsl(${hue} 60% 45%)`, background: `radial-gradient(circle at 30% 25%, hsl(${hue} 55% 32%), hsl(${hue} 45% 14%))` }}>{initials}</span>
   );
 }

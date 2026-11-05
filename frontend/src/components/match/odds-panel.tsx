@@ -60,7 +60,7 @@ export function OpenSportsbookDialog({ fixtureId, row, limits, onClose }: { fixt
           <p className="text-muted">{done.notice}</p>
           <p>If you place a bet, you can record it for your own tracking and limits:</p>
           <div className="flex gap-2">
-            <Link href={prefill} className="inline-flex h-10 items-center rounded-[var(--radius-md)] bg-brand-500 px-4 text-sm font-semibold text-[#06110a] hover:bg-brand-400">Record this bet</Link>
+            <Link href={prefill} className="inline-flex h-10 items-center rounded-[var(--radius-md)] bg-brand-500 px-4 text-sm font-semibold text-on-brand hover:bg-brand-400">Record this bet</Link>
             <Button variant="ghost" onClick={close}>Not now</Button>
           </div>
         </div>
