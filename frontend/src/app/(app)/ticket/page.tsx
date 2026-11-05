@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Alert, EmptyState, Skeleton } from "@/components/ui/feedback";
 import { api } from "@/lib/api";
+import { ticketAsText } from "@/lib/booking";
 import { useConversionFlow } from "@/lib/conversion-flow";
 import { useApi } from "@/lib/hooks";
 import { MAX_TICKET, useTicket } from "@/lib/ticket";
@@ -86,6 +87,8 @@ export default function TicketPage() {
   const b = conv?.booking;
   const bookieName = conv?.destination.name ?? dest?.name ?? "your bookmaker";
 
+  const ticketText = useMemo(() => ticketAsText(items, { preview }), [items, preview]);
+
   const generate = () => {
     if (!usable.length || !bookie) return;
     void flow.run(() => api<Conversion>("/booking-converter/ticket", { method: "POST", body: { destination: bookie, prediction_ids: usable.map((i) => i.prediction_id) } }));
@@ -151,6 +154,10 @@ export default function TicketPage() {
                         Generate booking code
                       </Button>
                       <p className="text-[11px] leading-relaxed text-subtle">18+. You copy the code and place the bet yourself. We never place bets or hold money. Bookmakers price and settle five-minute markets differently.</p>
+                      <div className="space-y-2 border-t border-border pt-3">
+                        <p className="text-xs text-muted">Bookmaker not connected, or you just want the list? Copy your ticket as text and rebuild it on any bookmaker yourself.</p>
+                        <CopyButton text={ticketText} label="Copy ticket as text" variant="outline" />
+                      </div>
                     </>
                   )}
 

@@ -108,9 +108,9 @@ protection and where data is processed; what happens to codes already created if
 ## 9. Order of approach and fallbacks
 
 * Start with the two or three bookmakers your users use most, in parallel; the long wait is the agreement, not the code.
-* **While you wait:** launch with those bookmakers shown as "not connected yet". Consider the "Copy ticket as text" fallback
-  (not built yet; small change). Where an affiliate deal exists, a plain outbound link to the bookmaker (no code) is possible; the app
-  never pretends it made a code.
+* **While you wait:** launch with those bookmakers shown as "not connected yet". The ticket page has a **Copy ticket as text** button so players
+  can rebuild the slip by hand on any bookmaker. Where an affiliate deal exists, a plain outbound link to the bookmaker (no code) is possible;
+  the app never pretends it made a code.
 * **If a bookmaker refuses or goes quiet:** do not use unofficial methods. Ask whether it uses a sportsbook-platform supplier that offers
   partner access, or park that bookmaker.
 

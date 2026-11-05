@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanCode, copyText, isConverted, oddsChangeText } from "./booking";
+import { cleanCode, copyText, isConverted, oddsChangeText, ticketAsText } from "./booking";
 
 describe("booking converter helpers", () => {
   it("cleans pasted codes", () => {
@@ -42,5 +42,30 @@ describe("copyText", () => {
     vi.stubGlobal("navigator", {});
     vi.stubGlobal("document", undefined);
     expect(await copyText("ABC")).toBe(false);
+  });
+});
+
+describe("ticketAsText", () => {
+  const item = (id: number, over: Partial<import("./ticket").TicketItem> = {}): import("./ticket").TicketItem => ({
+    prediction_id: id, fixture_id: id, market: "MARKET_A", home: "Alpha FC", away: "Beta United", competition: "Premier Division",
+    kickoff_at: "2026-11-07T19:00:00Z", probability: 0.9, category: "qualified", is_demo: false, ...over,
+  });
+  it("lists games, the pick, the estimate and the disclaimer, with no bookmaker prices or codes", () => {
+    const t = ticketAsText([item(1), item(2, { market: "MARKET_B", home: "Gamma", away: "Delta", probability: 0.8 })], { timeZone: "UTC" });
+    expect(t).toContain("2 games");
+    expect(t).toContain("1. Alpha FC vs Beta United");
+    expect(t).toContain("No goal in the first five minutes");
+    expect(t).toContain("Scores level at the five-minute cutoff");
+    expect(t).toContain("Model estimate: 90.0% (fair odds 1.11)");
+    expect(t).toContain("Chance all win (model, assumes the games are independent): 72.0%");
+    expect(t).toContain("not guarantees");
+    expect(t).not.toMatch(/booking code|DEMO-/i);
+  });
+  it("prefers the latest analysis, leaves out unusable picks and labels demo data", () => {
+    const t = ticketAsText([item(1, { is_demo: true }), item(2)], { timeZone: "UTC", preview: { 1: { probability: 0.95, fair_odds: 1.05 }, 2: { available: false } } });
+    expect(t).toContain("1 game (DEMO DATA");
+    expect(t).toContain("95.0% (fair odds 1.05)");
+    expect(t).toContain("1 pick was left out");
+    expect(t).not.toContain("Chance all win");
   });
 });

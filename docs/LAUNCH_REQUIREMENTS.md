@@ -42,6 +42,9 @@ out-of-memory restarts. Redis: the free Key Value is fine to start. Vercel Pro: 
 
 ## 2. Real games in the scanner
 
+> Short on history? The detailed steps (why the free plan stalled, the exact commands, and the Windows version) are in
+> [`GETTING_MATCH_HISTORY.md`](GETTING_MATCH_HISTORY.md).
+
 What is needed: a football-data account, an API key, a list of leagues, and **history** (the model needs 5-10 earlier matches with a reliable
 goal timeline per team before a game can be anything but "Excluded").
 
@@ -114,8 +117,8 @@ acceptable for a public product).
 4. **Switch it on:** set that bookmaker's API credentials in Render's environment (the adapter reads them from env vars), turn
    `BOOKING_CONVERTER_DEMO` off, run `doctor`, test with real codes in the sandbox, then go live bookmaker by bookmaker.
 5. **Until a bookmaker is connected,** players cannot pick it on the ticket page (it shows "not connected yet"). A "Copy ticket as text"
-   button (games, markets and the model's estimates, no bookmaker needed) so the player can recreate the slip by hand does **not exist yet**;
-   it is a small change and a sensible launch fallback. Decide whether to add it before launch.
+   button (games, markets and the model's estimates, no bookmaker needed) so the player can recreate the slip by hand now exists on the
+   ticket page and works without any bookmaker.
 
 Budget: **unknown until quoted** (partner fees, revenue share or minimum volumes are the bookmaker's to set) plus developer time per
 integration. This is the biggest unknown in your launch cost.
