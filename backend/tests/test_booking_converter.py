@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.booking_converter import matcher as mt
 from app.booking_converter.adapters import registry
@@ -930,3 +930,27 @@ def test_admin_can_mark_a_teammates_email_verified(client, db, user_factory):
     assert r.status_code == 200
     db.expire_all()
     assert db.get(User, mate.id).is_verified
+
+
+def test_demo_staleness_rule():
+    from app.cli import demo_is_stale
+
+    now = datetime(2026, 11, 10, 12, tzinfo=UTC)
+    assert demo_is_stale("2026-11-10", 0, now) is False            # 0 = never refresh
+    assert demo_is_stale("2026-11-10", 20, now) is False           # loaded today (anchor midnight, 12h ago)
+    assert demo_is_stale("2026-11-08", 20, now) is True
+    assert demo_is_stale(None, 20, now) is True                    # unknown age counts as stale
+    assert demo_is_stale("garbage", 20, now) is True
+
+
+def test_bootstrap_loads_demo_data_on_first_start_without_reset(db, monkeypatch):
+    import app.cli as cli
+
+    s = get_settings()
+    monkeypatch.setattr(s, "football_provider", "demo")
+    monkeypatch.setattr(s, "bootstrap_admin_email", None)
+    calls: list[bool] = []
+    monkeypatch.setattr(cli, "seed_demo", lambda reset, days: calls.append(reset))
+    db.execute(text("DELETE FROM fixtures WHERE is_demo"))
+    db.commit()
+    assert cli.bootstrap()["demo_data"] == "loaded" and calls == [False]

@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # First-start setup for hosts with no shell (see `python -m app.cli bootstrap`). The password is only ever read from the environment.
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None
+    # Demo data is anchored to the day it was loaded, so on a long-lived demo site it goes stale. 0 = never refresh.
+    # With N hours set, `bootstrap` (run at every container start) reloads the demo data when it is older than that.
+    demo_refresh_hours: int = 0
 
     # --- Rate limiting -----------------------------------------------------
     rate_limit_enabled: bool = True

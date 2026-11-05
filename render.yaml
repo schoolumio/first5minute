@@ -1,17 +1,21 @@
-# Render Blueprint: the API, its database, Redis and the background worker, all managed (nothing runs on your PC).
-# The website itself goes on Vercel (see docs/DEPLOY_CLOUD.md). Not deployed or validated from the development sandbox:
-# treat the first "New > Blueprint" run as a test, and if Render rejects a field, its error names the line.
-# Plan names/prices change: check render.com/pricing and edit the `plan:` lines before you apply.
+# Render Blueprint for a FREE-tier test deployment: API + Postgres + Redis. The website goes on Vercel (docs/DEPLOY_CLOUD.md).
+#
+# Free-tier facts this file is built around (check render.com/pricing: they change):
+#   * the free web service falls asleep after ~15 idle minutes and takes about a minute to wake;
+#   * the free Postgres database is deleted ~30 days after creation unless you upgrade it first;
+#   * there is no free background worker, so the demo data refreshes itself when the API wakes (DEMO_REFRESH_HOURS).
+# To go paid later you do NOT need to change this file: upgrade each service in the Render dashboard (guide, part 6).
+# Not deployed from the development sandbox: if Render rejects a field, its message names the line.
 
 databases:
   - name: f5m-db
     databaseName: projectfive
     user: five
-    plan: basic-256mb          # a free database is deleted after about 30 days: do not use it for anything you want to keep
+    plan: free
     ipAllowList: []            # private network only
 
 services:
-  - type: keyvalue             # Redis: rate limiting and converter sessions
+  - type: keyvalue             # Redis: rate limiting and converter sessions (free: not persistent, which is fine here)
     name: f5m-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
@@ -22,7 +26,7 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter              # a free web service falls asleep after ~15 idle minutes, which is bad for a demo link
+    plan: free
     healthCheckPath: /healthz
     envVars:
       - key: DATABASE_URL
@@ -39,32 +43,35 @@ services:
       - { key: EMAIL_BACKEND, value: console }
       - { key: BOOKING_CONVERTER_ENABLED, value: "true" }
       - { key: BOOKING_CONVERTER_DEMO, value: "true" }
+      - { key: DEMO_REFRESH_HOURS, value: "24" }    # reload demo data at start-up when it is older than this
+      - { key: RUN_WORKER, value: "false" }         # no room for a worker inside a free 512 MB instance
       - { key: FRONTEND_URL, sync: false }          # you type these in the Render form: your Vercel address
       - { key: CORS_ORIGINS, sync: false }
-      - { key: BOOTSTRAP_ADMIN_EMAIL, sync: false } # the admin account is created on first start (never resets later)
+      - { key: BOOTSTRAP_ADMIN_EMAIL, sync: false } # the admin account is created on first start (never reset later)
       - { key: BOOTSTRAP_ADMIN_PASSWORD, sync: false }
 
-  - type: worker               # scheduled sync / scan / settle / renewals (celery worker + beat in one process)
-    name: f5m-worker
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    plan: starter
-    dockerCommand: celery -A app.workers.celery_app worker -B -l info -Q default,ingestion --concurrency 1
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase: { name: f5m-db, property: connectionString }
-      - key: REDIS_URL
-        fromService: { type: keyvalue, name: f5m-redis, property: connectionString }
-      - key: SECRET_KEY                              # the worker must use the same key as the API
-        fromService: { type: web, name: f5m-api, envVarKey: SECRET_KEY }
-      - { key: ENVIRONMENT, value: staging }
-      - { key: COOKIE_SECURE, value: "true" }
-      - { key: FOOTBALL_PROVIDER, value: demo }
-      - { key: ODDS_PROVIDER, value: none }
-      - { key: PAYMENT_PROVIDER, value: none }
-      - { key: EMAIL_BACKEND, value: console }
-      - { key: BOOKING_CONVERTER_ENABLED, value: "true" }
-      - { key: BOOKING_CONVERTER_DEMO, value: "true" }
-      - { key: FRONTEND_URL, sync: false }
-      - { key: CORS_ORIGINS, sync: false }
+# ---- When the client has paid: uncomment this worker (paid plan), set RUN_WORKER to "false" above, and re-apply. ----
+#  - type: worker
+#    name: f5m-worker
+#    runtime: docker
+#    dockerfilePath: ./backend/Dockerfile
+#    dockerContext: ./backend
+#    plan: starter
+#    dockerCommand: celery -A app.workers.celery_app worker -B -l info -Q default,ingestion --concurrency 1
+#    envVars:
+#      - key: DATABASE_URL
+#        fromDatabase: { name: f5m-db, property: connectionString }
+#      - key: REDIS_URL
+#        fromService: { type: keyvalue, name: f5m-redis, property: connectionString }
+#      - key: SECRET_KEY
+#        fromService: { type: web, name: f5m-api, envVarKey: SECRET_KEY }
+#      - { key: ENVIRONMENT, value: staging }
+#      - { key: COOKIE_SECURE, value: "true" }
+#      - { key: FOOTBALL_PROVIDER, value: demo }
+#      - { key: ODDS_PROVIDER, value: none }
+#      - { key: PAYMENT_PROVIDER, value: none }
+#      - { key: EMAIL_BACKEND, value: console }
+#      - { key: BOOKING_CONVERTER_ENABLED, value: "true" }
+#      - { key: BOOKING_CONVERTER_DEMO, value: "true" }
+#      - { key: FRONTEND_URL, sync: false }
+#      - { key: CORS_ORIGINS, sync: false }

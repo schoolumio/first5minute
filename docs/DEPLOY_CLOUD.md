@@ -1,92 +1,126 @@
-# Put First5Minute online without your PC (Render + Vercel)
+# Put First5Minute online without your PC (free Render + Vercel, upgrade later)
 
-Result: a permanent `https://....vercel.app` link for your team. Nothing runs on your computer; you only click through two dashboards.
+Result: a permanent `https://....vercel.app` link for your team that works while your PC is off. You only click through two dashboards;
+no Command Prompt is needed.
 
-| Piece | Where | Why there |
+| Piece | Where | Free-tier behaviour |
 |---|---|---|
-| Website (Next.js) | **Vercel** | Vercel is built for Next.js |
-| API + background worker | **Render** | the API must stay running and the worker runs scheduled jobs; Vercel's functions cannot do either |
-| Database (Postgres) and Redis | **Render** | managed, backed up, created by the same file |
+| Website (Next.js) | **Vercel** | free "Hobby" plan, always on |
+| API | **Render** web service | **sleeps after ~15 idle minutes**, about a minute to wake |
+| Database (Postgres) | **Render** | free, but **deleted ~30 days after creation** unless you upgrade it first |
+| Redis | **Render** Key Value | free, not persistent (it only holds rate-limit counters and converter sessions) |
+| Scheduled jobs (worker) | none on free | the demo data refreshes itself whenever the API wakes up and finds it older than 24 hours |
 
-All the backend pieces are described in `render.yaml` at the repo root, so Render builds them in one go. This was prepared and checked as
-configuration and unit tests only: it could not be deployed from the development sandbox. Treat the first run as a test and send me any
-error text.
+Everything on the Render side is described in `render.yaml` at the repo root, so Render builds it in one go. It was prepared and checked as
+configuration plus unit tests (and a measured fresh start-up: about 215 MB peak, inside the free 512 MB); it could **not** be deployed from
+the development sandbox. Treat your first run as the test and send me any error text. Plans, prices and limits change: check
+render.com/pricing and vercel.com/pricing.
 
-Costs: this setup uses paid Render plans on purpose (a free web service sleeps after idle minutes, and a free database is deleted after
-about 30 days). Check current prices at render.com/pricing and vercel.com/pricing before you click. Vercel's free "Hobby" plan is meant for
-non-commercial use; read its terms if investors or customers will use the link.
+What you will have at the end: the scanner, ticket builder and converter running on **demo data and fictional demo bookmakers** (every code
+labelled `DEMO-`), exactly like your local setup. Live matches and real booking codes are separate steps (see `docs/GO_LIVE.md`,
+sections 3 and 5).
 
 ---
 
-## 0. Before you start (10 minutes)
+## Part 0. Before you start (about 10 minutes)
 
-1. **The code must be on GitHub where both services can read it.** It is in `schoolumio/first5minute`, branch `claude/busy-edison-qgb9ta`.
-   You need a GitHub login that can read that repository. If you are not an owner of the `schoolumio` organisation, ask an owner to
+1. **A GitHub login that can read `schoolumio/first5minute`.** If you are not an owner of the `schoolumio` organisation, ask an owner to
    approve Render and Vercel when they ask for access, or fork the repository into your own account and use the fork.
-2. Optional but wise: merge the branch into `main` first so deploys follow `main`. Otherwise just choose the branch name in step 1.
-3. Make up an **admin email and a strong password** (12+ characters, letters and digits). You will type them into a form in step 1; never
-   put them in chat or in a file.
+2. Decide the branch: use `claude/busy-edison-qgb9ta` (the latest work), or merge it into `main` first.
+3. Make up an **admin email and a strong password** (12+ characters, letters and digits). Keep them in a password manager. You will
+   type them into a form in Part 1. Never paste them into chat or a file.
+4. Accounts: sign up at render.com and vercel.com **using "Continue with GitHub"**. Either may ask for a card even for free services.
 
-## 1. Render: database, Redis, API, worker
+## Part 1. Render: database, Redis and the API (about 10 minutes of clicking, then waiting)
 
-1. Sign up at render.com with GitHub.
-2. **New > Blueprint**, pick the `first5minute` repository and the branch. Render reads `render.yaml` and lists 4 things: database
-   `f5m-db`, Redis `f5m-redis`, web service `f5m-api`, worker `f5m-worker`.
-3. It asks for the values marked "sync: false":
-   * `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`: your admin login from step 0.
-   * `FRONTEND_URL` and `CORS_ORIGINS`: type `https://placeholder.example.com` for now; you fix them in step 3.
-4. Click **Apply**. The first build takes several minutes. When `f5m-api` shows **Live**, open its page and copy its address, like
-   `https://f5m-api-xxxx.onrender.com`. Open `https://f5m-api-xxxx.onrender.com/healthz`: it should answer `{"status":"ok"...}`.
-5. First start: the API creates the tables, then (in the background, about a minute) creates your admin account and loads the **demo**
-   data. You can watch it in the service's **Logs**: look for `"admin": "created"` and `"demo_data": "loaded"`.
+1. In Render click **New +** then **Blueprint**.
+2. Choose the `first5minute` repository (click **Connect**), then pick your branch.
+3. Render reads `render.yaml` and shows what it will create: a database `f5m-db`, Redis `f5m-redis`, and the web service `f5m-api`.
+   All three should say **Free**.
+4. Fill the four boxes it asks for:
+   * `BOOTSTRAP_ADMIN_EMAIL`: your admin email.
+   * `BOOTSTRAP_ADMIN_PASSWORD`: your admin password.
+   * `FRONTEND_URL` and `CORS_ORIGINS`: type `https://placeholder.example.com` in both for now (you fix them in Part 4).
+5. Click **Apply** (or Deploy Blueprint). The first build takes several minutes. Watch `f5m-api` until it says **Live**.
+6. Open `f5m-api` and copy its address at the top, like `https://f5m-api-xxxx.onrender.com`.
+7. **Check it works:** open `https://f5m-api-xxxx.onrender.com/healthz` in your browser. You should see `{"status":"ok"}`.
+8. Open the **Logs** tab. About a minute after it goes live (free instances are slow) you should see a block containing
+   `"admin": "created"` and `"demo_data": "loaded"`. If you see `bootstrap failed`, read the lines above it (usually a weak password).
 
-## 2. Vercel: the website
+## Part 2. Vercel: the website (about 5 minutes)
 
-1. Sign up at vercel.com with GitHub. **Add New > Project**, import `first5minute`.
-2. **Root Directory:** click Edit and choose `frontend`. Framework should read "Next.js".
-3. **Environment Variables:** add one, `BACKEND_URL` = the Render API address from step 1.4 (no trailing slash).
-   It must be set *before* the first build, because Vercel bakes it into the proxy rules.
-4. **Deploy.** When it finishes you get `https://first5minute-xxxx.vercel.app`. Open it: the landing page loads.
+1. In Vercel click **Add New...** then **Project**, and import `first5minute`.
+2. **Root Directory:** click **Edit** and choose `frontend`. The framework should read **Next.js**.
+3. Open **Environment Variables** and add exactly one:
+   * Name `BACKEND_URL`, value = the Render address from Part 1 step 6 (no `/` at the end).
+   * This must be set **before** the first deploy. Vercel bakes it in during the build.
+4. Click **Deploy**. When it finishes you get a link like `https://first5minute-xxxx.vercel.app`. Open it: the landing page loads.
 
-## 3. Tell the API its public address (2 minutes)
+## Part 3. Connect the two (2 minutes)
 
-In Render, open `f5m-api` > **Environment** and set both to your Vercel address, then **Save** (it redeploys):
+In Render open `f5m-api`, then **Environment**. Change both values to your Vercel address, then **Save, rebuild, and deploy**:
 
 * `FRONTEND_URL` = `https://first5minute-xxxx.vercel.app`
 * `CORS_ORIGINS` = `https://first5minute-xxxx.vercel.app`
 
-Do the same two values on `f5m-worker`. Then sign in at your Vercel link with the admin email and password. The sidebar should show
-"Scanner live" and the purple demo banner; the scanner lists demo games, and tickets can be built on the demo bookmakers.
+## Part 4. First sign-in
 
-## 4. Add your team
+1. Open your Vercel link and click **Sign in**. Use the admin email and password from Part 1.
+   The first request after the API has been idle can take up to a minute. If you see an error, wait 30 seconds and refresh.
+2. You should see the purple "Demo environment" banner and the scanner full of demo games. Add three picks, open **My ticket**, choose
+   **Demo Book Alpha** and generate a code (it will start with `DEMO-`).
 
-Teammates register themselves on your Vercel link; you then approve them from the admin page.
-Email verification is switched to `console` (emails are written to the logs, not sent), so for a team test do this: after a teammate
-registers, sign in as admin, open **Administration > Users**, click **Verify** on their row, and pick their plan (for example `pro`). When you are ready for real mail, set `EMAIL_BACKEND=smtp` and the `SMTP_*`
-values (see `.env.production.example`).
+## Part 5. Add your team
 
-## 5. Custom address (optional)
+1. Send the Vercel link; teammates click **Create an account** and register. Emails are written to the Render logs on this setup (they are
+   not delivered), so the teammate stays "unverified".
+2. You sign in, open **Administration > Users**, click **Verify** on their row and choose a plan (for example `pro`) in the Plan box.
+3. They can now use the scanner and ticket builder.
 
-Vercel > your project > **Settings > Domains** to attach your own domain; update `FRONTEND_URL` and `CORS_ORIGINS` in Render to match.
+## Living with the free tier (read this before the demo)
 
-## What this does and does not give you
+* **Cold starts.** After ~15 idle minutes the API sleeps. The next person waits up to a minute and may see an error on first click:
+  tell them to wait and refresh. **Open the link yourself 2 minutes before any live demo or investor call.**
+* **Keeping it awake (optional).** A free uptime monitor that opens `https://f5m-api-xxxx.onrender.com/healthz` every 5 minutes keeps it
+  awake. One always-on free service fits inside Render's monthly free hours, but Render's rules can change, so confirm. If it never sleeps it
+  also never restarts, so the demo data would go stale after a few days: in Render open `f5m-api` > **Manual Deploy** > **Restart service**
+  (or Deploy latest commit) to refresh it.
+* **Demo data refresh.** On every start, if the demo data is older than 24 hours the API reloads it (takes a minute or two on a free instance).
+  A refresh removes demo rows, including teammates' saved demo matches. Tickets live in each person's browser and are not affected.
+* **Database expiry (the important one).** In Render open `f5m-db` and note the expiry date. **Upgrade it before that date** (Part 6) or the
+  data is deleted. Put a reminder in your calendar for day 20.
+* **No shell.** Free web services have no Shell tab, so use the admin page for users and the Logs tab for diagnostics.
 
-* The scanner, ticket builder and converter run on **demo data and fictional demo bookmakers** (every code is labelled `DEMO-`), exactly
-  like the local setup. Live matches need a football-data plan; real booking codes need an official bookmaker integration
-  (see `docs/GO_LIVE.md`, sections 3 and 5).
-* When you go truly live: `ENVIRONMENT=production`, remove `BOOKING_CONVERTER_DEMO`, set `FOOTBALL_PROVIDER=api_football` with its key
-  (type it only into Render's environment form), real SMTP, Paystack live keys. The app refuses to start in production with demo switches
-  on. Run `python -m app.cli doctor` from Render's **Shell** tab (paid services have one).
-* Backups: Render's paid Postgres plans keep backups; confirm the retention on the plan you pick.
+## Part 6. When the client pays: moving to paid (no rebuild, no data loss)
+
+Do these in this order, in the Render dashboard:
+
+1. **Database first:** `f5m-db` > **Settings** (or Info) > change the instance type / **Upgrade** to a paid plan. It upgrades in place and
+   keeps your data. This removes the 30-day expiry.
+2. **API:** `f5m-api` > **Settings** > **Instance Type** > pick a paid type (for example Starter). It stops sleeping.
+3. **Worker (scheduled scans, settlement, renewals):** in `render.yaml` delete the `#` comment marks in front of the `f5m-worker` block, change
+   `RUN_WORKER` on `f5m-api` to `"false"` (it already is), commit, and in Render open the Blueprint and **Manual sync**. Worker is a paid type.
+4. **Redis:** the free one is fine to start; upgrade it if you want it to survive restarts.
+5. **Vercel:** the free Hobby plan is for non-commercial use. When customers use the site, move to a paid Vercel plan (read its terms) and
+   attach your domain: project > **Settings > Domains**, then update `FRONTEND_URL` and `CORS_ORIGINS` in Render to the new address.
+6. **Backups:** confirm the backup/retention of the database plan you chose, and test a restore once.
+
+Going from demo to genuinely live is a separate list (see `docs/GO_LIVE.md` section 4): `ENVIRONMENT=production` (the app then refuses demo
+switches), remove `BOOKING_CONVERTER_DEMO`, a football-data provider and key (typed only into Render's Environment form), real SMTP email,
+Paystack live keys, and an official integration per bookmaker for real booking codes.
 
 ## If something goes wrong
 
-| Symptom | Likely cause |
+| Symptom | Likely cause and fix |
 |---|---|
-| Vercel site loads but sign-in says "Network error" / 502 | `BACKEND_URL` is wrong or was added after the first build: fix it, then **Redeploy** |
-| `f5m-api` stuck on "Deploying" | open Logs; a migration or environment error is printed there |
-| Scanner is empty right after the first deploy | the demo data loads in the background for about a minute; refresh |
-| Cannot sign in as admin | `BOOTSTRAP_ADMIN_*` were empty or the password was too weak (see the `bootstrap` line in the API logs). Set them and redeploy; an existing account is never reset |
-| Render rejects `render.yaml` | send me the exact message; plan names or field names may have changed |
+| Render rejects `render.yaml` | send me the exact message: a field or plan name may have changed |
+| `f5m-api` fails to deploy | open **Logs**; a database/migration/env error is printed there |
+| `/healthz` does not answer | the instance is waking up (wait a minute) or the deploy failed (check Logs) |
+| Vercel site loads but sign-in says "Network error" or 502 | `BACKEND_URL` is wrong, has a trailing `/`, or was added after the first build. Fix it, then in Vercel **Deployments > Redeploy** |
+| Sign-in works but a teammate sees "Verify your email" | click **Verify** for them in Administration > Users (Part 5) |
+| Cannot sign in as admin | the admin values were empty or the password was weak; look for `bootstrap` in the API Logs, fix the values, restart. An existing account is never reset |
+| Scanner empty right after deploy | demo data loads in the background; wait a minute and refresh |
+| Scanner empty days later | the data is older than the games; restart the API (see "Keeping it awake") |
+| App crashes with "out of memory" | the free 512 MB is too small for your usage: upgrade the API instance (Part 6 step 2) |
 
-Changing the code later: push to the branch; both services redeploy automatically.
+Changing the code later: push to the branch and both services redeploy automatically.

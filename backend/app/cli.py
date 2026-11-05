@@ -83,12 +83,24 @@ def reset_demo(db) -> None:
     db.commit()
 
 
+def demo_is_stale(anchor_iso: str | None, hours: int, now: datetime) -> bool:
+    """Is demo data loaded on `anchor_iso` (a date) older than `hours`? hours <= 0 means never refresh."""
+    if hours <= 0:
+        return False
+    try:
+        loaded = datetime.fromisoformat(anchor_iso).replace(tzinfo=UTC) if anchor_iso else None
+    except ValueError:
+        loaded = None
+    return loaded is None or (now - loaded) > timedelta(hours=hours)
+
+
 def bootstrap() -> dict:
     """Idempotent first-start setup for hosts without a shell (Render, Railway, ...). Safe to run on every deploy.
 
     * creates the admin from BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD, only if that email has no account yet
       (an existing account is never touched, so a changed password is not silently reset);
-    * loads the demo data once, when FOOTBALL_PROVIDER=demo and none exists yet.
+    * loads the demo data once, when FOOTBALL_PROVIDER=demo and none exists yet; with DEMO_REFRESH_HOURS=N it reloads
+      it when it is older than N hours (a sleeping free host wakes up to stale demo fixtures otherwise).
     """
     from app.models import Fixture
 
@@ -105,11 +117,18 @@ def bootstrap() -> dict:
     if s.demo_mode:
         with SessionLocal() as db:
             have = db.scalar(select(Fixture.id).where(Fixture.is_demo.is_(True)).limit(1)) is not None
-        if have:
+        stale = False
+        if have and s.demo_refresh_hours > 0:
+            from app.services.settings import get_setting
+
+            with SessionLocal() as db:
+                anchor = (get_setting(db, "demo.anchor") or {}).get("date")
+            stale = demo_is_stale(anchor, s.demo_refresh_hours, utcnow())
+        if have and not stale:
             out["demo_data"] = "already loaded"
         else:
-            seed_demo(False, 14)
-            out["demo_data"] = "loaded"
+            seed_demo(have, 14)          # reset only when refreshing (removes demo rows, incl. teammates' saved demo matches)
+            out["demo_data"] = "refreshed" if have else "loaded"
     return out
 
 
