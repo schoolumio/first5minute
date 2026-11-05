@@ -1,0 +1,10 @@
+# Keep the deployment upload small: none of this is needed at runtime.
+backend/tests
+backend/mlruns
+backend/dump.rdb
+backend/model_store
+backend/Dockerfile
+backend/start.sh
+frontend/node_modules
+frontend/.next
+docs

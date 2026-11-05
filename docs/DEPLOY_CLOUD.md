@@ -124,3 +124,41 @@ Paystack live keys, and an official integration per bookmaker for real booking c
 | App crashes with "out of memory" | the free 512 MB is too small for your usage: upgrade the API instance (Part 6 step 2) |
 
 Changing the code later: push to the branch and both services redeploy automatically.
+
+---
+
+## Option B (experimental): everything on Vercel as one project with two services
+
+`vercel.json` at the repo root declares two services: `web` (Next.js, `frontend/`) and `api` (FastAPI, `backend/`), and routes `/api/v1/*` to
+`api` and everything else to `web`. Import the repo in Vercel with **Root Directory = the repository root** (not `frontend`; do not set
+`BACKEND_URL`). Browser calls to `/api/v1` then reach the API directly, and no service calls another, so there are no bindings.
+Not deployed or run from the development sandbox. Read the limits before choosing this over Parts 1-3:
+
+* **Bundle size (likely blocker).** The API's dependencies measure about 328 MB installed (scipy 138, numpy 56, scikit-learn 46).
+  As I recall, Vercel's Python functions are limited to about 250 MB unzipped; verify on vercel.com/docs. If the build fails on size, the fix is a
+  slimmer API dependency set (lazy-loading the ML modules and replacing the two scipy calls in `app/engine/poisson.py`), which is code work.
+* **No worker, no beat.** Celery cannot run on Vercel, so scheduled scans, settlement and renewals do not run. Demo data does not
+  refresh itself either.
+* **No start-up steps.** Migrations and `bootstrap` do not run on Vercel. Run them once from your PC against the database (below).
+* **Database and Redis must be external** (Render's, Neon or Upstash via the Vercel Marketplace). Redis is required, not optional: serverless
+  instances do not share memory, and the ticket flow keeps its state between requests in Redis.
+* **Environment variables** (Project > Settings > Environment Variables, shared by both services): `DATABASE_URL`, `REDIS_URL`, `SECRET_KEY`
+  (64 random hex characters), `ENVIRONMENT=staging`, `COOKIE_SECURE=true`, `FRONTEND_URL` and `CORS_ORIGINS` (your Vercel address),
+  `FOOTBALL_PROVIDER=demo`, `ODDS_PROVIDER=none`, `PAYMENT_PROVIDER=none`, `EMAIL_BACKEND=console`, `BOOKING_CONVERTER_ENABLED=true`,
+  `BOOKING_CONVERTER_DEMO=true`.
+
+One-off database setup from your PC (Windows Command Prompt; use the connection string your database provider shows, and never share it):
+
+```bat
+call "C:\Users\User\Downloads\first5minute-claude-busy-edison-qgb9ta (3)\first5minute-claude-busy-edison-qgb9ta\backend\.venv\Scripts\activate"
+cd /d "NEWFOLDER\backend"
+set DATABASE_URL=PASTE-YOUR-DATABASE-URL-HERE
+set REDIS_URL=PASTE-YOUR-REDIS-URL-HERE
+set FOOTBALL_PROVIDER=demo
+set BOOTSTRAP_ADMIN_EMAIL=you@example.com
+set BOOTSTRAP_ADMIN_PASSWORD=YourStrongPassword1
+alembic upgrade head
+python -m app.cli bootstrap
+```
+
+`vercel dev` runs both services locally. To refresh stale demo data later, repeat the last line with `set DEMO_REFRESH_HOURS=24`.
