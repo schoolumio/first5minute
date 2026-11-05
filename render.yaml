@@ -1,0 +1,70 @@
+# Render Blueprint: the API, its database, Redis and the background worker, all managed (nothing runs on your PC).
+# The website itself goes on Vercel (see docs/DEPLOY_CLOUD.md). Not deployed or validated from the development sandbox:
+# treat the first "New > Blueprint" run as a test, and if Render rejects a field, its error names the line.
+# Plan names/prices change: check render.com/pricing and edit the `plan:` lines before you apply.
+
+databases:
+  - name: f5m-db
+    databaseName: projectfive
+    user: five
+    plan: basic-256mb          # a free database is deleted after about 30 days: do not use it for anything you want to keep
+    ipAllowList: []            # private network only
+
+services:
+  - type: keyvalue             # Redis: rate limiting and converter sessions
+    name: f5m-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
+
+  - type: web                  # the API
+    name: f5m-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter              # a free web service falls asleep after ~15 idle minutes, which is bad for a demo link
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: f5m-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: f5m-redis, property: connectionString }
+      - key: SECRET_KEY
+        generateValue: true
+      - { key: ENVIRONMENT, value: staging }        # "production" refuses demo mode; switch only when you are really live
+      - { key: COOKIE_SECURE, value: "true" }
+      - { key: FOOTBALL_PROVIDER, value: demo }
+      - { key: ODDS_PROVIDER, value: none }
+      - { key: PAYMENT_PROVIDER, value: none }
+      - { key: EMAIL_BACKEND, value: console }
+      - { key: BOOKING_CONVERTER_ENABLED, value: "true" }
+      - { key: BOOKING_CONVERTER_DEMO, value: "true" }
+      - { key: FRONTEND_URL, sync: false }          # you type these in the Render form: your Vercel address
+      - { key: CORS_ORIGINS, sync: false }
+      - { key: BOOTSTRAP_ADMIN_EMAIL, sync: false } # the admin account is created on first start (never resets later)
+      - { key: BOOTSTRAP_ADMIN_PASSWORD, sync: false }
+
+  - type: worker               # scheduled sync / scan / settle / renewals (celery worker + beat in one process)
+    name: f5m-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    dockerCommand: celery -A app.workers.celery_app worker -B -l info -Q default,ingestion --concurrency 1
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: f5m-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: f5m-redis, property: connectionString }
+      - key: SECRET_KEY                              # the worker must use the same key as the API
+        fromService: { type: web, name: f5m-api, envVarKey: SECRET_KEY }
+      - { key: ENVIRONMENT, value: staging }
+      - { key: COOKIE_SECURE, value: "true" }
+      - { key: FOOTBALL_PROVIDER, value: demo }
+      - { key: ODDS_PROVIDER, value: none }
+      - { key: PAYMENT_PROVIDER, value: none }
+      - { key: EMAIL_BACKEND, value: console }
+      - { key: BOOKING_CONVERTER_ENABLED, value: "true" }
+      - { key: BOOKING_CONVERTER_DEMO, value: "true" }
+      - { key: FRONTEND_URL, sync: false }
+      - { key: CORS_ORIGINS, sync: false }

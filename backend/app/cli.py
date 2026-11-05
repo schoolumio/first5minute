@@ -2,6 +2,7 @@
 
   python -m app.cli create-admin --email admin@example.com --password '...'
   python -m app.cli seed-demo [--reset] [--replay-days 14]
+  python -m app.cli bootstrap     (idempotent first start: admin + demo data; used by the cloud deployment)
   python -m app.cli sync | scan | settle | backtest | expire
 """
 
@@ -82,6 +83,36 @@ def reset_demo(db) -> None:
     db.commit()
 
 
+def bootstrap() -> dict:
+    """Idempotent first-start setup for hosts without a shell (Render, Railway, ...). Safe to run on every deploy.
+
+    * creates the admin from BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD, only if that email has no account yet
+      (an existing account is never touched, so a changed password is not silently reset);
+    * loads the demo data once, when FOOTBALL_PROVIDER=demo and none exists yet.
+    """
+    from app.models import Fixture
+
+    s = get_settings()
+    out: dict = {"admin": "not configured", "demo_data": "not needed"}
+    if s.bootstrap_admin_email and s.bootstrap_admin_password:
+        with SessionLocal() as db:
+            exists = db.scalar(select(User).where(User.email == s.bootstrap_admin_email.lower())) is not None
+        if exists:
+            out["admin"] = "already exists"
+        else:
+            create_admin(s.bootstrap_admin_email, s.bootstrap_admin_password)
+            out["admin"] = "created"
+    if s.demo_mode:
+        with SessionLocal() as db:
+            have = db.scalar(select(Fixture.id).where(Fixture.is_demo.is_(True)).limit(1)) is not None
+        if have:
+            out["demo_data"] = "already loaded"
+        else:
+            seed_demo(False, 14)
+            out["demo_data"] = "loaded"
+    return out
+
+
 def seed_demo(reset: bool, replay_days: int) -> dict:
     """Load synthetic DEMO data and replay the pipeline over recent days.
 
@@ -141,6 +172,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--reset", action="store_true")
     s.add_argument("--replay-days", type=int, default=14)
     sub.add_parser("reset-demo")
+    sub.add_parser("bootstrap", help="idempotent first start: admin from BOOTSTRAP_ADMIN_* env + demo data once")
     for job in ("sync", "scan", "settle", "odds", "expire", "notify"):
         sub.add_parser(job)
     sub.add_parser("doctor", help="readiness check: what is live on this deployment and what is not (exit 1 on any FAIL)")
@@ -179,6 +211,8 @@ def main(argv: list[str] | None = None) -> None:
         create_admin(args.email, args.password)
     elif args.cmd == "seed-demo":
         print(json.dumps(seed_demo(args.reset, args.replay_days), indent=2, default=str))
+    elif args.cmd == "bootstrap":
+        print(json.dumps(bootstrap(), indent=2))
     elif args.cmd == "reset-demo":
         with SessionLocal() as db:
             reset_demo(db)

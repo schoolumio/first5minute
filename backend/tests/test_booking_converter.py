@@ -867,3 +867,66 @@ def test_create_user_makes_a_verified_normal_user(db):
         create_user("teammate@example.com", "TeamPass123x", "free")
     with pytest.raises(SystemExit):
         create_user("weak@example.com", "short", "free")
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Cloud deployment helpers
+# ---------------------------------------------------------------------------------------------------------------------
+def test_database_url_from_hosting_providers_gets_the_psycopg_driver():
+    from app.core.config import Settings
+
+    for given in ("postgres://u:p@h:5432/d", "postgresql://u:p@h:5432/d", "postgresql+psycopg://u:p@h:5432/d"):
+        assert Settings(database_url=given).database_url == "postgresql+psycopg://u:p@h:5432/d"
+
+
+def test_bootstrap_creates_admin_once_and_never_resets_it(db, monkeypatch):
+    from app.cli import bootstrap
+    from app.core.security import verify_password
+    from app.models import User
+
+    s = get_settings()
+    monkeypatch.setattr(s, "football_provider", "none")      # no demo data in this test
+    monkeypatch.setattr(s, "bootstrap_admin_email", "Boss@Example.com")
+    monkeypatch.setattr(s, "bootstrap_admin_password", "FirstPass123x")
+    assert bootstrap()["admin"] == "created"
+    u = db.scalar(select(User).where(User.email == "boss@example.com"))
+    assert u.is_admin and u.is_verified
+    monkeypatch.setattr(s, "bootstrap_admin_password", "ChangedPass123x")
+    assert bootstrap()["admin"] == "already exists"
+    db.expire_all()
+    assert verify_password("FirstPass123x", db.scalar(select(User).where(User.email == "boss@example.com")).password_hash)
+
+
+def test_bootstrap_without_settings_does_nothing(monkeypatch):
+    from app.cli import bootstrap
+
+    s = get_settings()
+    monkeypatch.setattr(s, "football_provider", "none")
+    monkeypatch.setattr(s, "bootstrap_admin_email", None)
+    monkeypatch.setattr(s, "bootstrap_admin_password", None)
+    assert bootstrap() == {"admin": "not configured", "demo_data": "not needed"}
+
+
+def test_bootstrap_rejects_a_weak_admin_password(monkeypatch):
+    from app.cli import bootstrap
+
+    s = get_settings()
+    monkeypatch.setattr(s, "football_provider", "none")
+    monkeypatch.setattr(s, "bootstrap_admin_email", "weak@example.com")
+    monkeypatch.setattr(s, "bootstrap_admin_password", "short")
+    with pytest.raises(SystemExit):
+        bootstrap()
+
+
+def test_admin_can_mark_a_teammates_email_verified(client, db, user_factory):
+    from app.models import User
+    from tests.conftest import login
+
+    admin = user_factory(email="boss2@example.com", role="admin")
+    mate = user_factory(email="mate@example.com", verified=False)
+    assert not mate.is_verified
+    login(client, admin.email)
+    r = client.patch(f"/api/v1/admin/users/{mate.id}", json={"email_verified": True})
+    assert r.status_code == 200
+    db.expire_all()
+    assert db.get(User, mate.id).is_verified

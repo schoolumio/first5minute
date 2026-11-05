@@ -67,6 +67,7 @@ class UserUpdateIn(BaseModel):
     is_active: bool | None = None
     plan_code: str | None = Field(default=None, pattern="^(free|starter|pro|elite)$")
     plan_days: int = Field(default=30, ge=1, le=366)
+    email_verified: bool | None = Field(default=None, description="true marks the address verified (team tests without email)")
 
 
 @router.get("/users")
@@ -94,6 +95,8 @@ def update_user(user_id: int, body: UserUpdateIn, request: Request, admin: User 
         u.role_id = role.id
     if body.is_active is not None:
         u.is_active = body.is_active
+    if body.email_verified is True and u.email_verified_at is None:
+        u.email_verified_at = utcnow()
     if body.plan_code:
         now = utcnow()
         for s in db.scalars(select(Subscription).where(Subscription.user_id == u.id,

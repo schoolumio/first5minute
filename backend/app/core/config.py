@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     password_reset_ttl_minutes: int = 60
     cookie_secure: bool = False
     cookie_domain: str | None = None
+    # First-start setup for hosts with no shell (see `python -m app.cli bootstrap`). The password is only ever read from the environment.
+    bootstrap_admin_email: str | None = None
+    bootstrap_admin_password: str | None = None
 
     # --- Rate limiting -----------------------------------------------------
     rate_limit_enabled: bool = True
@@ -103,6 +106,17 @@ class Settings(BaseSettings):
     renewal_max_attempts: int = 3
     renewal_grace_days: int = 3
     renewal_reminder_days: int = 3
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _db_driver(cls, v: object) -> object:
+        """Hosting providers hand out postgres:// or postgresql:// URLs; SQLAlchemy needs the psycopg driver named."""
+        if isinstance(v, str):
+            v = v.strip()
+            for prefix in ("postgres://", "postgresql://"):
+                if v.startswith(prefix):
+                    return "postgresql+psycopg://" + v[len(prefix):]
+        return v
 
     @field_validator("cors_origins", "football_league_ids", mode="before")
     @classmethod

@@ -70,7 +70,7 @@ function Users() {
           <tr key={u.id}>
             <Td><p className="font-medium">{u.email}</p><p className="text-xs text-subtle">{u.full_name}</p></Td>
             <Td className="text-xs text-muted">{u.created_at && new Date(u.created_at).toLocaleDateString()}</Td>
-            <Td>{u.email_verified ? <Badge tone="brand">yes</Badge> : <Badge>no</Badge>}</Td>
+            <Td>{u.email_verified ? <Badge tone="brand">yes</Badge> : <Button size="sm" variant="outline" onClick={() => update(u.id, { email_verified: true })}>Verify</Button>}</Td>
             <Td><Select className="h-8 w-28 text-xs" value={u.entitlements?.plan} onChange={(e) => update(u.id, { plan_code: e.target.value })}>
               {["free", "starter", "pro", "elite"].map((p) => <option key={p} value={p}>{p}</option>)}</Select></Td>
             <Td><Select className="h-8 w-24 text-xs" value={u.role} disabled={u.id === me?.id} onChange={(e) => update(u.id, { role: e.target.value })}>

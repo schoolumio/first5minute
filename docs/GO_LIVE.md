@@ -2,6 +2,8 @@
 
 Read this first: what "live" can and cannot mean today.
 
+> **No PC, no server to manage?** Use [`docs/DEPLOY_CLOUD.md`](DEPLOY_CLOUD.md): website on Vercel, API/database/worker on Render, one blueprint file (`render.yaml`).
+
 | Part | Can be live now? | What it needs |
 |---|---|---|
 | Website, sign-in, accounts, scanner pages | **Yes** | a server (this guide) |
