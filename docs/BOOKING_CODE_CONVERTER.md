@@ -19,8 +19,8 @@ In the UI these bookmakers show "not connected yet" and conversions that involve
 
 ## Two ways to use it
 
-1. **Ticket from the scanner** (the main flow). In the **Match scanner** (or a match page) the punter reads the model's analysis and presses
-   **Add to ticket** on the picks they like: *No goal in the first 5 minutes* (market A) or *Level at 5 minutes* (market B), one pick per game.
+1. **Ticket from the scanner** (the main flow). In the **Match scanner** each game is one card with both picks side by side; the punter reads the model's analysis and taps
+   the picks they like (or presses **Add to ticket** on a match page): *No goal in the first 5 minutes* (market A) or *Level at 5 minutes* (market B), one pick per game.
    The floating ticket bar / **My ticket** page lists each leg with the probability, fair odds, category, data quality, confidence, sample size
    and calibration status. They choose a bookmaker and press **Generate booking code**; the ticket is matched at that bookmaker and, when every
    leg matched and the bookmaker supports it, a genuine code is returned for the punter to copy and place themselves. After matching the page

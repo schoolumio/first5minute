@@ -47,7 +47,7 @@ from app.services.responsible import limit_status
 
 log = get_logger(__name__)
 
-NOTICE = ("18+. First5Minute only converts betslips. It never places bets or holds money. Odds change quickly: check every "
+NOTICE = ("18+. First5Minute only builds betslips and booking codes. It never places bets or holds money. Odds change quickly: check every "
           "selection and price on the bookmaker before you bet, and only stake what you can afford to lose.")
 MAX_GENERATION_ATTEMPTS = 3
 MAX_TICKET_PICKS = 20

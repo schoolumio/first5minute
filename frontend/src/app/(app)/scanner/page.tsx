@@ -4,7 +4,7 @@ import { Lock, Radar, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/layout/app-shell";
-import { PredictionCard } from "@/components/match/prediction-row";
+import { MatchPickCard } from "@/components/match/match-pick-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Pager } from "@/components/ui/data";
@@ -42,6 +42,17 @@ export default function ScannerPage() {
     return q;
   }, [filters, categories, page]);
   const { data, loading, error } = useApi<ScannerRes>("/scanner", query);
+  // one card per game with both five-minute picks side by side
+  const groups = useMemo(() => {
+    const byFixture = new Map<number, { fixture: NonNullable<Prediction["fixture"]>; a?: Prediction; b?: Prediction }>();
+    for (const p of data?.items ?? []) {
+      if (!p.fixture) continue;
+      const g = byFixture.get(p.fixture_id) ?? { fixture: p.fixture };
+      if (p.market === "MARKET_A") g.a = p; else g.b = p;
+      byFixture.set(p.fixture_id, g);
+    }
+    return [...byFixture.values()];
+  }, [data]);
 
   const set = (k: keyof typeof DEFAULTS) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setDraft({ ...draft, [k]: e.target.value });
@@ -147,7 +158,7 @@ export default function ScannerPage() {
       {data && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
           <p>
-            <span className="font-semibold text-fg">{data.total}</span> predictions ·{" "}
+            <span className="font-semibold text-fg">{groups.length}</span> games · <span className="font-semibold text-fg">{data.total}</span> predictions ·{" "}
             {Object.entries(data.counts).map(([k, v]) => `${CATEGORY_LABEL[k as Category]} ${v}`).join(" · ") || "none"}
           </p>
           <p>Window {new Date(data.window.from).toLocaleString()} - {new Date(data.window.to).toLocaleString()}</p>
@@ -160,7 +171,10 @@ export default function ScannerPage() {
         <Card><EmptyState icon={Radar} title="No matches for these filters">Try widening the date range, lowering the probability threshold or including the watchlist.</EmptyState></Card>
       ) : (
         <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{data.items.map((p) => <PredictionCard key={p.id} p={p} />)}</div>
+          <p className="mb-3 text-xs text-muted">Tap a pick to add it to your ticket (one pick per game), then review it in <Link href="/ticket" className="font-semibold text-brand-400 hover:underline">My ticket</Link>.</p>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {groups.map((g) => <MatchPickCard key={g.fixture.id} fixture={g.fixture} a={g.a} b={g.b} />)}
+          </div>
           <Pager page={data.page} pages={data.pages} onPage={setPage} />
         </>
       )}

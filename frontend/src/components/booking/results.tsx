@@ -46,7 +46,7 @@ export function StatusBadge({ status }: { status: ConversionStatus }) {
   return <Badge tone={TONE[status]}>{STATUS_LABEL[status]}</Badge>;
 }
 
-function CopyButton({ text, label, variant = "primary" }: { text: string; label: string; variant?: "primary" | "outline" }) {
+export function CopyButton({ text, label, variant = "primary" }: { text: string; label: string; variant?: "primary" | "outline" }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const click = async () => {
     const ok = await copyText(text);
