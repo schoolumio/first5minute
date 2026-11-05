@@ -15,7 +15,7 @@ import { Alert, EmptyState, Skeleton, UpgradeNotice } from "@/components/ui/feed
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
-import { kickoff, MARKET_LABEL, MARKET_LONG, num, pct } from "@/lib/format";
+import { MARKET_LABEL, MARKET_LONG, num, pct, relative } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 import type { Fixture, Market, Prediction, TeamProfile, Window } from "@/lib/types";
 
@@ -32,7 +32,7 @@ function PredictionPanel({ p, market, fixture }: { p?: Prediction; market: Marke
   if (!p) return <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5"><p className="text-sm text-muted">No {MARKET_LABEL[market]} prediction yet.</p></div>;
   const levels = (p.components.level_scores ?? null) as Record<string, number> | null;
   return (
-    <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5">
+    <div className="panel rounded-[var(--radius-lg)] p-6">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">{MARKET_LABEL[market]}</p>
@@ -40,7 +40,7 @@ function PredictionPanel({ p, market, fixture }: { p?: Prediction; market: Marke
         </div>
         <CategoryBadge category={p.category} />
       </div>
-      <ProbabilityValue value={p.probability} className="mt-4 block text-4xl" />
+      <p className="numeral mt-4 text-[72px] leading-none text-brand-400">{pct(p.probability)}</p>
       <ProbabilityBar value={p.probability} className="mt-3" />
       {p.is_current && <div className="mt-3"><AddToTicketButton p={{ ...p, fixture }} /></div>}
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -100,6 +100,15 @@ function FormTable({ profile, color }: { profile: TeamProfile; color: string }) 
   );
 }
 
+function Crest({ name, className = "" }: { name: string; className?: string }) {
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
+  const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+  return (
+    <span aria-hidden className={`numeral flex h-14 w-14 shrink-0 items-center justify-center rounded-full border-2 text-xl text-fg sm:h-16 sm:w-16 ${className}`}
+      style={{ borderColor: `hsl(${hue} 60% 45%)`, background: `radial-gradient(circle at 30% 25%, hsl(${hue} 55% 32%), hsl(${hue} 45% 14%))` }}>{initials}</span>
+  );
+}
+
 function WindowRow({ label, w }: { label: string; w?: Window }) {
   if (!w) return null;
   return (
@@ -137,19 +146,30 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
     <>
       <Link href="/scanner" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg"><ArrowLeft className="h-4 w-4" /> Back to scanner</Link>
 
-      <Card className="pitch-grid mb-6">
-        <CardBody className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted">
-              {fx.competition.name} {fx.round && <span>· {fx.round}</span>} {fx.is_demo && <DemoBadge />}
-              {fx.competition.gender === "women" && <Badge tone="info">Women</Badge>}
-            </p>
-            <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-bold tracking-tight sm:text-3xl">
-              {home.team.name} <span className="text-muted">vs</span> {away.team.name}
-            </h1>
-            <p className="mt-1 text-sm text-muted">{kickoff(fx.kickoff_at)} {fx.venue && `· ${fx.venue}`} · <span className="capitalize">{fx.status}</span>
-              {fx.score.home != null && <span className="ml-2 font-semibold text-fg">FT {fx.score.home}-{fx.score.away}</span>}</p>
+      <section className="bg-stadium pitch-lines panel relative mb-6 overflow-hidden rounded-[var(--radius-xl)] px-5 py-7 sm:px-10 sm:py-9">
+        <p className="flex flex-wrap items-center gap-2 font-[family-name:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
+          {fx.competition.name} {fx.round && <span>· {fx.round}</span>} {fx.is_demo && <DemoBadge />}
+          {fx.competition.gender === "women" && <Badge tone="info">Women</Badge>}
+          <span className="ml-auto capitalize text-subtle">{fx.status}</span>
+        </p>
+        <div className="mt-6 grid items-center gap-5 sm:grid-cols-[1fr_auto_1fr]">
+          <div className="flex items-center gap-4 sm:justify-end sm:text-right">
+            <h1 className="order-2 break-words font-[family-name:var(--font-display)] text-3xl font-semibold uppercase leading-none tracking-wide sm:order-1 sm:text-5xl">{home.team.name}</h1>
+            <Crest name={home.team.name} className="order-1 sm:order-2" />
           </div>
+          <div className="text-center">
+            <p className="numeral text-xs uppercase tracking-[0.3em] text-subtle">vs</p>
+            <p className="numeral mt-1 text-2xl">{new Date(fx.kickoff_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</p>
+            <p className="text-[11px] text-subtle">{new Date(fx.kickoff_at).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })} · {relative(fx.kickoff_at)}</p>
+            {fx.score.home != null && <p className="numeral mt-1 text-lg text-brand-300">FT {fx.score.home}-{fx.score.away}</p>}
+          </div>
+          <div className="flex items-center gap-4">
+            <Crest name={away.team.name} />
+            <h1 className="break-words font-[family-name:var(--font-display)] text-3xl font-semibold uppercase leading-none tracking-wide sm:text-5xl">{away.team.name}</h1>
+          </div>
+        </div>
+        <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-4">
+          <p className="text-xs text-muted">{fx.venue ? `${fx.venue} · ` : ""}the five-minute window opens at kick-off</p>
           <div className="flex items-center gap-2">
             {["finished", "abandoned"].includes(fx.status) && (
               <Badge tone={fx.timeline_status === "complete" ? "brand" : "warn"} title="Event-timeline reconciliation status">Timeline: {fx.timeline_status}</Badge>
@@ -158,8 +178,8 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
               <Bookmark className="h-4 w-4" /> {saved ? "Saved" : "Save"}
             </Button>
           </div>
-        </CardBody>
-      </Card>
+        </div>
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <PredictionPanel p={data.predictions.MARKET_A} market="MARKET_A" fixture={data.fixture} />

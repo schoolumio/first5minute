@@ -30,7 +30,7 @@ export default function OddsPage() {
 
   return (
     <>
-      <PageHeader title="Odds comparison" description="Best fresh price per scanner prediction across approved sportsbooks, next to the model's fair odds." />
+      <PageHeader eyebrow="Price intelligence" title="Odds comparison" description="Best fresh price per scanner prediction across approved sportsbooks, next to the model's fair odds." />
       {error?.status === 402 ? <UpgradeNotice feature="Odds comparison" /> : (
         <>
           <Card className="mb-5">

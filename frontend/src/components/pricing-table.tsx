@@ -67,13 +67,13 @@ export function PricingTable() {
           const featured = p.code === "pro";
           const limit = p.features.scanner_daily_limit;
           return (
-            <div key={p.code} className={cn("relative flex flex-col rounded-[var(--radius-xl)] border bg-surface p-6",
-              featured ? "border-brand-500/60 shadow-[0_0_0_1px_rgb(108_194_46/0.25)]" : "border-border")}>
+            <div key={p.code} className={cn("panel relative flex flex-col rounded-[var(--radius-xl)] p-6",
+              featured && "border-brand-500/60 shadow-[var(--shadow-glow)]")}>
               {featured && <Badge tone="brand" className="absolute -top-2.5 left-6">Most popular</Badge>}
-              <p className="text-sm font-semibold text-muted">{p.name}</p>
-              <p className="mt-3 font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight">
+              <p className="font-[family-name:var(--font-mono)] text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">{p.name}</p>
+              <p className="numeral mt-3 text-[40px] leading-none">
                 {p.price_minor === 0 ? "Free" : money(p.price, p.currency)}
-                {p.price_minor > 0 && <span className="text-sm font-medium text-muted"> /{p.interval}</span>}
+                {p.price_minor > 0 && <span className="font-[family-name:var(--font-sans)] text-sm font-medium text-muted"> /{p.interval}</span>}
               </p>
               <p className="mt-2 min-h-10 text-sm text-muted">{p.description}</p>
               <ul className="mt-5 flex-1 space-y-2.5 text-sm">

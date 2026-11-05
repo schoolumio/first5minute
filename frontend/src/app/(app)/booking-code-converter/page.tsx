@@ -36,7 +36,7 @@ export default function BookingCodeConverterPage() {
 
   return (
     <>
-      <PageHeader title="Convert Booking Code" description="Move an existing booking code from one bookmaker to another. We never place bets: you copy the new code and place it yourself." />
+      <PageHeader eyebrow="Betslip tools" title="Convert Booking Code" description="Move an existing booking code from one bookmaker to another. We never place bets: you copy the new code and place it yourself." />
       <Alert tone="info" className="mb-4">
         Want a ticket from First5Minute&apos;s own analysis? Pick games in the <Link href="/scanner" className="font-semibold underline">Match scanner</Link> and add them to your <Link href="/ticket" className="font-semibold underline"><Ticket className="inline h-3.5 w-3.5" aria-hidden /> ticket</Link>.
       </Alert>

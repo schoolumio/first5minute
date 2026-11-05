@@ -54,7 +54,7 @@ export default function RegisterPage() {
 
   return (
     <>
-      <h1 className="text-xl font-bold">Create your account</h1>
+      <h1 className="font-[family-name:var(--font-display)] text-4xl font-semibold uppercase tracking-wide">Create your account</h1>
       <p className="mt-1 text-sm text-muted">Free plan included - no card required.</p>
       {error && <Alert tone="danger" className="mt-4">{error}</Alert>}
       <form onSubmit={submit} className="mt-6 space-y-4">

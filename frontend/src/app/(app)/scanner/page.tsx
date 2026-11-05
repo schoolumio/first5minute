@@ -7,9 +7,9 @@ import { PageHeader } from "@/components/layout/app-shell";
 import { MatchPickCard } from "@/components/match/match-pick-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
-import { Pager } from "@/components/ui/data";
+import { Pager, Tabs } from "@/components/ui/data";
 import { Alert, EmptyState, Skeleton } from "@/components/ui/feedback";
-import { Checkbox, Field, Input, Select } from "@/components/ui/form";
+import { Field, Input, Select } from "@/components/ui/form";
 import { useAuth } from "@/lib/auth";
 import { CATEGORY_LABEL } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
@@ -33,7 +33,7 @@ export default function ScannerPage() {
   const [filters, setFilters] = useState(DEFAULTS);
   const [categories, setCategories] = useState<Category[]>(["qualified", "watchlist"]);
   const [page, setPage] = useState(1);
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const comps = useApi<Competition[]>("/competitions");
 
   const query = useMemo(() => {
@@ -58,6 +58,7 @@ export default function ScannerPage() {
     setDraft({ ...draft, [k]: e.target.value });
   const apply = (e?: React.FormEvent) => { e?.preventDefault(); setPage(1); setFilters(draft); };
   const reset = () => { setDraft(DEFAULTS); setFilters(DEFAULTS); setPage(1); };
+  const quick = (k: keyof typeof DEFAULTS, v: string) => { setPage(1); setDraft((d) => ({ ...d, [k]: v })); setFilters((f) => ({ ...f, [k]: v })); };
   const countries = Array.from(new Set((comps.data ?? []).map((c) => c.country).filter(Boolean))) as string[];
 
   const LockedField = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -73,10 +74,35 @@ export default function ScannerPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Opportunity radar"
         title="Match scanner"
-        description="Upcoming fixtures ranked by model-estimated probability, sample size and data quality."
-        action={<Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}><SlidersHorizontal className="h-4 w-4" /> {showFilters ? "Hide" : "Show"} filters</Button>}
+        description="Upcoming fixtures ranked by model-estimated probability, sample size and data quality. Tap the picks you like to build a ticket."
       />
+
+      <div className="panel mb-4 flex flex-wrap items-center gap-x-5 gap-y-3 rounded-[var(--radius-lg)] px-4 py-3">
+        <Tabs value={(filters.market || "") as "" | "MARKET_A" | "MARKET_B"} onChange={(m) => quick("market", m)}
+          options={[{ value: "", label: "Both markets" }, { value: "MARKET_A", label: "No goal 0-5'" }, { value: "MARKET_B", label: "Level at 5'" }]} />
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Tiers">
+          {(["qualified", "watchlist", "below_threshold", "excluded"] as Category[]).map((c) => {
+            const on = categories.includes(c);
+            return (
+              <button key={c} type="button" aria-pressed={on} onClick={() => { setPage(1); setCategories(on ? categories.filter((x) => x !== c) : [...categories, c]); }}
+                className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${on ? "border-brand-500/50 bg-brand-500/10 text-brand-300" : "border-border-strong text-muted hover:text-fg"}`}>
+                {CATEGORY_LABEL[c]}{data?.counts?.[c] !== undefined && <span className="numeral ml-1.5 text-muted">{data.counts[c]}</span>}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
+          <Select aria-label="Sort by" className="h-8 w-40 min-w-0 flex-1 text-xs sm:flex-none sm:w-44" value={filters.sort} onChange={(e) => quick("sort", e.target.value)}>
+            <option value="probability">Sort: probability</option>
+            <option value="kickoff">Sort: kick-off</option>
+            <option value="competition">Sort: competition</option>
+            <option value="value" disabled={!odds}>Sort: value {odds ? "" : "(Pro)"}</option>
+          </Select>
+          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}><SlidersHorizontal className="h-4 w-4" /> {showFilters ? "Hide" : "More"} filters</Button>
+        </div>
+      </div>
 
       {showFilters && (
         <Card className="mb-5">
@@ -84,13 +110,6 @@ export default function ScannerPage() {
             <form onSubmit={apply} className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
               <Field label="From date"><Input type="date" value={draft.date_from} onChange={set("date_from")} /></Field>
               <Field label="To date"><Input type="date" value={draft.date_to} onChange={set("date_to")} /></Field>
-              <Field label="Market">
-                <Select value={draft.market} onChange={set("market")}>
-                  <option value="">Both markets</option>
-                  <option value="MARKET_A">A · No goal 0-5&apos;</option>
-                  <option value="MARKET_B">B · Level at 5&apos;</option>
-                </Select>
-              </Field>
               <Field label="Competition">
                 <Select value={draft.competition_id} onChange={set("competition_id")}>
                   <option value="">All competitions</option>
@@ -130,19 +149,7 @@ export default function ScannerPage() {
                 </Select>
               </LockedField>
               <LockedField label="Home / away team"><Input placeholder="Team name" value={draft.team} onChange={set("team")} maxLength={80} /></LockedField>
-              <Field label="Sort by">
-                <Select value={draft.sort} onChange={set("sort")}>
-                  <option value="probability">Probability</option>
-                  <option value="kickoff">Kick-off time</option>
-                  <option value="competition">Competition</option>
-                  <option value="value" disabled={!odds}>Available value {odds ? "" : "(Pro)"}</option>
-                </Select>
-              </Field>
               <div className="col-span-2 flex flex-wrap items-center gap-4 md:col-span-4 xl:col-span-6">
-                {(["qualified", "watchlist", "below_threshold", "excluded"] as Category[]).map((c) => (
-                  <Checkbox key={c} label={CATEGORY_LABEL[c]} checked={categories.includes(c)}
-                    onChange={(e) => { setPage(1); setCategories(e.target.checked ? [...categories, c] : categories.filter((x) => x !== c)); }} />
-                ))}
                 <div className="ml-auto flex gap-2">
                   <Button type="button" variant="ghost" size="sm" onClick={reset}>Reset</Button>
                   <Button type="submit" size="sm">Apply filters</Button>

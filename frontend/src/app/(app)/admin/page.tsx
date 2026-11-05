@@ -510,7 +510,7 @@ export default function AdminPage() {
   if (user?.role !== "admin") return <Alert tone="danger">Administrator access required.</Alert>;
   return (
     <>
-      <PageHeader title="Administration" description="Users, billing, data providers, scanner configuration and audit trail." />
+      <PageHeader eyebrow="Operations" title="Administration" description="Users, billing, data providers, scanner configuration and audit trail." />
       <div className="mb-5 overflow-x-auto">
         <Tabs value={tab} onChange={setTab} options={[
           { value: "overview", label: "Overview" }, { value: "users", label: "Users" }, { value: "plans", label: "Plans" }, { value: "competitions", label: "Competitions" },

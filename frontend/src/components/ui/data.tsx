@@ -16,15 +16,17 @@ export function Stat({
   icon?: React.ElementType;
   tone?: "default" | "brand" | "info" | "warn";
 }) {
-  const toneCls = { default: "text-muted", brand: "text-brand-400", info: "text-info", warn: "text-warn" }[tone];
+  const bar = { default: "bg-border-strong", brand: "bg-brand-500", info: "bg-info", warn: "bg-warn" }[tone];
+  const ico = { default: "text-muted", brand: "text-brand-400", info: "text-info", warn: "text-warn" }[tone];
   return (
-    <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-[var(--shadow-card)]">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted">{label}</p>
-        {Icon && <Icon className={cn("h-4 w-4", toneCls)} aria-hidden />}
+    <div className="panel relative overflow-hidden rounded-[var(--radius-lg)] p-4 pl-5">
+      <span className={cn("absolute inset-y-3 left-0 w-1 rounded-r", bar)} aria-hidden />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">{label}</p>
+        {Icon && <Icon className={cn("h-4 w-4", ico)} aria-hidden />}
       </div>
-      <p className="tabular mt-2 font-[family-name:var(--font-display)] text-2xl font-bold tracking-tight">{value}</p>
-      {sub && <p className="mt-1 text-xs text-subtle">{sub}</p>}
+      <p className="numeral mt-1.5 text-[34px] leading-none">{value}</p>
+      {sub && <p className="mt-2 text-xs text-subtle">{sub}</p>}
     </div>
   );
 }
@@ -58,7 +60,7 @@ export function Tabs<T extends string>({
   className?: string;
 }) {
   return (
-    <div role="tablist" className={cn("inline-flex rounded-[var(--radius-md)] border border-border bg-surface-2 p-0.5", className)}>
+    <div role="tablist" className={cn("inline-flex rounded-[var(--radius-md)] border border-border bg-bg/60 p-0.5", className)}>
       {options.map((o) => (
         <button
           key={o.value}
@@ -66,8 +68,8 @@ export function Tabs<T extends string>({
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "cursor-pointer rounded-[8px] px-3 py-1.5 text-xs font-semibold transition-colors",
-            value === o.value ? "bg-surface-3 text-fg shadow-sm" : "text-muted hover:text-fg",
+            "cursor-pointer rounded-[6px] px-3 py-1.5 text-xs font-semibold tracking-wide transition-colors",
+            value === o.value ? "bg-brand-500/15 text-brand-300 ring-1 ring-inset ring-brand-500/40" : "text-muted hover:text-fg",
           )}
         >
           {o.label}
@@ -87,7 +89,7 @@ export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTab
 export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
-      className={cn("whitespace-nowrap border-b border-border px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-subtle", className)}
+      className={cn("whitespace-nowrap border-b border-border bg-surface-2/40 px-4 py-2.5 text-left font-[family-name:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.14em] text-subtle", className)}
       {...props}
     />
   );

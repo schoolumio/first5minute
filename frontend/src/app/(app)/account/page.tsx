@@ -376,7 +376,7 @@ function AccountInner() {
   const [tab, setTab] = useState<Tab>(params.get("reference") ? "billing" : (["profile", "billing", "saved", "bets", "safer", "security"] as string[]).includes(initial ?? "") ? (initial as Tab) : "profile");
   return (
     <>
-      <PageHeader title="Account" description="Profile, subscription, saved matches and safer-gambling controls." />
+      <PageHeader eyebrow="You" title="Account" description="Profile, subscription, saved matches and safer-gambling controls." />
       <div className="mb-5 overflow-x-auto">
         <Tabs value={tab} onChange={setTab} options={[
           { value: "profile", label: "Profile" }, { value: "billing", label: "Subscription" }, { value: "saved", label: "Saved matches" },

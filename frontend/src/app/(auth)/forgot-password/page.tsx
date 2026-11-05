@@ -28,7 +28,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <>
-      <h1 className="text-xl font-bold">Reset your password</h1>
+      <h1 className="font-[family-name:var(--font-display)] text-4xl font-semibold uppercase tracking-wide">Reset your password</h1>
       <p className="mt-1 text-sm text-muted">We&apos;ll email you a link to choose a new password.</p>
       {sent ? (
         <Alert tone="success" className="mt-6">If an account exists for that email, a reset link is on its way. It expires in 60 minutes.</Alert>

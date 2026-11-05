@@ -19,14 +19,14 @@ export function MarketingHeader() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-bg/85 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-bg/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         <Link href="/" aria-label="First5Minute home">
           <Logo />
         </Link>
         <nav className="hidden items-center gap-7 text-sm text-muted md:flex">
           {NAV.map((n) => (
-            <Link key={n.href} href={n.href} className="hover:text-fg">
+            <Link key={n.href} href={n.href} className="font-medium tracking-wide transition-colors hover:text-brand-300">
               {n.label}
             </Link>
           ))}
@@ -86,7 +86,8 @@ export function ResponsibleNote({ className = "" }: { className?: string }) {
 
 export function MarketingFooter() {
   return (
-    <footer className="border-t border-border bg-surface/40">
+    <footer className="relative border-t border-border bg-surface/50">
+      <span className="ribbon absolute left-4 top-0 -translate-y-1/2 sm:left-6" aria-hidden />
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-4">
         <div className="md:col-span-2">
           <Logo />
@@ -97,7 +98,7 @@ export function MarketingFooter() {
           <ResponsibleNote className="mt-4 max-w-md" />
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-subtle">Product</p>
+          <p className="font-[family-name:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">Product</p>
           <ul className="mt-3 space-y-2 text-sm text-muted">
             <li><Link href="/#how-it-works" className="hover:text-fg">How it works</Link></li>
             <li><Link href="/pricing" className="hover:text-fg">Pricing</Link></li>
@@ -105,7 +106,7 @@ export function MarketingFooter() {
           </ul>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-subtle">Account</p>
+          <p className="font-[family-name:var(--font-mono)] text-[10px] font-semibold uppercase tracking-[0.2em] text-subtle">Account</p>
           <ul className="mt-3 space-y-2 text-sm text-muted">
             <li><Link href="/login" className="hover:text-fg">Sign in</Link></li>
             <li><Link href="/register" className="hover:text-fg">Create account</Link></li>

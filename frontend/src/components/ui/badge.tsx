@@ -3,7 +3,7 @@ import { cn } from "@/lib/cn";
 import { CATEGORY_LABEL, QUALITY_LABEL } from "@/lib/format";
 import type { Category, Quality } from "@/lib/types";
 
-const badge = cva("inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide", {
+const badge = cva("inline-flex items-center gap-1 whitespace-nowrap rounded-[var(--radius-sm)] border px-1.5 py-0.5 font-[family-name:var(--font-mono)] text-[10px] font-semibold uppercase tracking-wider", {
   variants: {
     tone: {
       neutral: "border-border-strong bg-surface-2 text-muted",

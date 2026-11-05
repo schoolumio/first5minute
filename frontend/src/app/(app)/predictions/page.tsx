@@ -91,7 +91,7 @@ export default function PredictionsPage() {
 
   return (
     <>
-      <PageHeader title="Prediction history" description="Every prediction is stored before kick-off and can never be edited. Settled at the five-minute cutoff." />
+      <PageHeader eyebrow="Track record" title="Every call, on the record" description="Every prediction is stored before kick-off and can never be edited. Settled at the five-minute cutoff." />
       <Performance />
 
       <Card className="mt-6">

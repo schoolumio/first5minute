@@ -95,7 +95,7 @@ export default function TicketPage() {
 
   return (
     <>
-      <PageHeader title="My ticket" description="The games you picked from the scanner. Choose where you'll bet and we build the same ticket there and give you its booking code." />
+      <PageHeader eyebrow="Betslip tools" title="My ticket" description="The games you picked from the scanner. Choose where you'll bet and we build the same ticket there and give you its booking code." />
 
       {empty ? (
         <Card><EmptyState icon={Ticket} title="Your ticket is empty">Open the Match scanner, read the analysis and tap a pick to add it here.

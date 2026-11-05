@@ -32,7 +32,7 @@ function ResetForm() {
 
   return (
     <>
-      <h1 className="text-xl font-bold">Choose a new password</h1>
+      <h1 className="font-[family-name:var(--font-display)] text-4xl font-semibold uppercase tracking-wide">Choose a new password</h1>
       {!token && <Alert tone="danger" className="mt-4">This reset link is incomplete. Request a new one.</Alert>}
       {error && <Alert tone="danger" className="mt-4">{error}</Alert>}
       <form onSubmit={submit} className="mt-6 space-y-4">

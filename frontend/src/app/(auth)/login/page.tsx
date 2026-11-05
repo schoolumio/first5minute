@@ -35,7 +35,7 @@ function LoginForm() {
 
   return (
     <>
-      <h1 className="text-xl font-bold">Sign in</h1>
+      <h1 className="font-[family-name:var(--font-display)] text-4xl font-semibold uppercase tracking-wide">Sign in</h1>
       <p className="mt-1 text-sm text-muted">Welcome back to First5Minute.</p>
       {params.get("reset") && <Alert tone="success" className="mt-4">Password updated - sign in with your new password.</Alert>}
       {error && <Alert tone="danger" className="mt-4">{error}</Alert>}
