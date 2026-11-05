@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.booking_converter.adapters.base import BookmakerAdapter, Capabilities
-from app.booking_converter.canonical import FT, H1, H2
+from app.booking_converter.canonical import FT, H1, H2, M5, norm_name
 from app.booking_converter.domain import (
     DecodedBetslip,
     DestEvent,
@@ -30,6 +30,7 @@ from app.booking_converter.domain import (
     Selection,
 )
 from app.booking_converter.errors import BookingCodeNotFound, GenerationFailed
+from app.booking_converter.teams import team_similarity
 
 ALPHA, BETA, GAMMA = "demo_alpha", "demo_beta", "demo_gamma"
 
@@ -47,11 +48,14 @@ _EVENTS = {
 # id -> list of (market, period, line, {outcome: (alpha odds, beta odds)}); beta odds None = beta does not offer it
 _MARKETS = {
     "ev1": [("1X2", FT, None, {"HOME": ("1.85", "1.85"), "DRAW": ("3.40", "3.40"), "AWAY": ("4.10", "4.20")}),
-            ("OU", FT, "2.5", {"OVER": ("1.90", "1.85"), "UNDER": ("1.90", "1.95")})],
+            ("OU", FT, "2.5", {"OVER": ("1.90", "1.85"), "UNDER": ("1.90", "1.95")}),
+            ("OU", M5, "0.5", {"OVER": ("5.20", "5.00"), "UNDER": ("1.15", "1.18")}),
+            ("1X2", M5, None, {"HOME": ("4.50", "4.50"), "DRAW": ("1.20", "1.22"), "AWAY": ("6.50", "6.50")})],
     "ev2": [("BTTS", FT, None, {"YES": ("1.72", "1.72"), "NO": ("2.05", "2.05")}),
             ("OU", FT, "3.5", {"OVER": ("2.60", None), "UNDER": ("1.45", None)}),
             ("OU", FT, "2.5", {"OVER": ("1.50", "1.50"), "UNDER": ("2.45", "2.45")})],
-    "ev3": [("1X2", FT, None, {"HOME": ("1.60", "1.60"), "DRAW": ("3.80", "3.80"), "AWAY": ("5.00", "5.00")})],
+    "ev3": [("1X2", FT, None, {"HOME": ("1.60", "1.60"), "DRAW": ("3.80", "3.80"), "AWAY": ("5.00", "5.00")}),
+            ("OU", M5, "0.5", {"OVER": ("5.50", None), "UNDER": ("1.12", None)})],
     "ev3w": [("1X2", FT, None, {"HOME": ("2.00", "2.00"), "DRAW": ("3.20", "3.20"), "AWAY": ("3.50", "3.50")})],
     "ev4": [("1X2", FT, None, {"HOME": ("2.20", None), "DRAW": ("3.10", None), "AWAY": ("3.30", None)})],
     "ev5": [("1X2", FT, None, {"HOME": ("2.50", "2.50"), "DRAW": ("3.00", "3.00"), "AWAY": ("2.90", "2.90")}),
@@ -78,7 +82,7 @@ def _base() -> datetime:
 
 
 def _market_name(style: str, market: str, period: str) -> tuple[str, bool]:
-    prefix = {FT: "", H1: "1st Half - ", H2: "2nd Half - "}[period]
+    prefix = {FT: "", H1: "1st Half - ", H2: "2nd Half - ", M5: "First 5 Minutes - " if style == "alpha" else "5 Min "}[period]
     alpha = {"1X2": "1X2", "OU": "Over/Under", "BTTS": "GG/NG", "DC": "Double Chance"}
     beta = {"1X2": "Match Result", "OU": "Total Goals", "BTTS": "Both Teams To Score", "DC": "Double Chance"}
     return prefix + (alpha if style == "alpha" else beta)[market], style == "alpha"
@@ -129,33 +133,80 @@ class DemoAlpha(_DemoAdapter):
     code, name, style = ALPHA, "Demo Book Alpha", "alpha"
     capabilities = Capabilities(can_decode=True, can_find_events=True, can_generate=True)
 
+    def _render(self, beta: bool, eid: str, home: str, away: str, comp: str, start: datetime, specs: list,
+                suspended: frozenset = frozenset()) -> DestEvent | None:
+        style = "beta" if beta else "alpha"
+        tag = style[0].upper()
+        markets = []
+        for market, period, line, outs in specs:
+            offered = {k: v[1 if beta else 0] for k, v in outs.items()}
+            if all(v is None for v in offered.values()):
+                continue
+            name, _ = _market_name(style, market, period)
+            spec = (f"total={line}" if beta else line) if line else None
+            mid = f"{tag}-{eid}-{market}-{period}-{line or 'x'}"
+            markets.append(DestMarket(id=mid, name=name, specifier=spec, outcomes=[
+                DestOutcome(id=f"{mid}-{k}", name=_outcome_name(style, market, k, line, home, away), odds=Decimal(v),
+                            available=(eid, market, k, period) not in suspended)
+                for k, v in offered.items() if v is not None]))
+        return DestEvent(id=f"{tag}-{eid}", home_team=home, away_team=away, competition=comp, sport="football", start_time=start,
+                         markets=markets) if markets or not beta else None
+
     def _catalog(self, beta: bool) -> list[DestEvent]:
         base = _base()
         events = []
         for ev, (home, away, comp, hrs, alt, shift) in _EVENTS.items():
             if beta and alt is None:
                 continue
-            h, a = (alt if beta else (home, away))
-            style = "beta" if beta else "alpha"
-            markets = []
-            for market, period, line, outs in _MARKETS[ev]:
-                offered = {k: v[1 if beta else 0] for k, v in outs.items()}
-                if all(v is None for v in offered.values()):
-                    continue
-                name, _ = _market_name(style, market, period)
-                spec = (f"total={line}" if beta else line) if line else None
-                markets.append(DestMarket(
-                    id=f"{style[0].upper()}-{ev}-{market}-{period}-{line or 'x'}", name=name, specifier=spec,
-                    outcomes=[DestOutcome(id=f"{style[0].upper()}-{ev}-{market}-{period}-{line or 'x'}-{k}",
-                                          name=_outcome_name(style, market, k, line, h, a), odds=Decimal(v),
-                                          available=not (beta and (ev, market, k) in _SUSPENDED_AT_BETA))
-                              for k, v in offered.items() if v is not None]))
-            events.append(DestEvent(id=f"{style[0].upper()}-{ev}", home_team=h, away_team=a, competition=comp, sport="football",
-                                    start_time=base + timedelta(hours=hrs, minutes=shift if beta else 0), markets=markets))
+            h, a = alt if beta else (home, away)
+            suspended = frozenset({(ev, m, k, FT) for (e, m, k) in _SUSPENDED_AT_BETA if e == ev}) if beta else frozenset()
+            e = self._render(beta, ev, h, a, comp, base + timedelta(hours=hrs, minutes=shift if beta else 0), _MARKETS[ev], suspended)
+            if e is not None:
+                events.append(e)
         return events
 
+    def _synthesised(self, q: EventQuery, beta: bool) -> DestEvent | None:
+        """A fictional listing for a fixture the demo list does not contain (e.g. the demo scanner's matches).
+
+        Deterministic from the team names: some fixtures are missing at demo_beta, some lack the five-minute markets, one is
+        suspended, and prices differ slightly, so every result path can be tried. Demo simulator only.
+        """
+        if q.start_time is None:
+            return None
+        base = self._catalog(beta)
+        for e in base:   # a static fixture already covers this match: do not list it twice
+            if (team_similarity(q.home_team, e.home_team) >= 0.9 and team_similarity(q.away_team, e.away_team) >= 0.9
+                    and e.start_time and abs(e.start_time - q.start_time) <= timedelta(minutes=30)):
+                return None
+        h = int(hashlib.sha256(f"{norm_name(q.home_team)}|{norm_name(q.away_team)}".encode()).hexdigest(), 16)
+        if beta and h % 5 == 0:
+            return None                                           # not listed at demo_beta
+        home = q.home_team + (" FC" if beta else "")
+        away = q.away_team + (" FC" if beta else "")
+        d = Decimal(h % 60) / 100
+        cut = beta and h % 2 == 0
+
+        def pair(x: str) -> tuple[str, str]:
+            v = Decimal(x) + d
+            return f"{v:.2f}", f"{(v - Decimal('0.05')) if cut else v:.2f}"
+        specs: list = [
+            ("1X2", FT, None, {"HOME": pair("1.40"), "DRAW": pair("3.20"), "AWAY": pair("2.60")}),
+            ("OU", FT, "2.5", {"OVER": pair("1.70"), "UNDER": pair("1.85")}),
+            ("BTTS", FT, None, {"YES": pair("1.75"), "NO": pair("1.90")}),
+        ]
+        no_m5 = beta and h % 4 == 0
+        if not no_m5:
+            specs += [("OU", M5, "0.5", {"OVER": pair("4.80"), "UNDER": pair("1.12")}),
+                      ("1X2", M5, None, {"HOME": pair("5.00"), "DRAW": pair("1.18"), "AWAY": pair("6.00")})]
+        eid = "syn" + str(h % 10**6)
+        suspended = frozenset({(eid, "1X2", "DRAW", M5)}) if beta and h % 7 == 0 else frozenset()
+        shift = 10 if beta and h % 3 == 0 else 0
+        return self._render(beta, eid, home, away, q.competition or "Demo league",
+                            q.start_time + timedelta(minutes=shift), specs, suspended)
+
     def find_events(self, query: EventQuery) -> list[DestEvent]:
-        return self._catalog(beta=False)
+        extra = self._synthesised(query, beta=False)
+        return self._catalog(beta=False) + ([extra] if extra else [])
 
     def create_booking(self, picks: list[Pick]) -> GeneratedBooking:
         return _demo_booking(picks, self.code, fail_events=set())
@@ -165,7 +216,8 @@ class DemoBeta(DemoAlpha):
     code, name, style = BETA, "Demo Book Beta", "beta"
 
     def find_events(self, query: EventQuery) -> list[DestEvent]:
-        return self._catalog(beta=True)
+        extra = self._synthesised(query, beta=True)
+        return self._catalog(beta=True) + ([extra] if extra else [])
 
     def create_booking(self, picks: list[Pick]) -> GeneratedBooking:
         return _demo_booking(picks, self.code, fail_events=_FAIL_GENERATION_AT_BETA)

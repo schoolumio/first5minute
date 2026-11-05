@@ -16,13 +16,13 @@ import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
-FT, H1, H2 = "FT", "1H", "2H"
+FT, H1, H2, M5 = "FT", "1H", "2H", "5M"      # M5 = the first five minutes of the match
 
 M_1X2, M_DC, M_DNB, M_BTTS, M_OU, M_HTFT = "1X2", "DOUBLE_CHANCE", "DRAW_NO_BET", "BTTS", "OVER_UNDER", "HT_FT"
 
 MARKET_LABELS = {M_1X2: "1X2", M_DC: "Double chance", M_DNB: "Draw no bet", M_BTTS: "Both teams to score",
                  M_OU: "Total goals over/under", M_HTFT: "Half time / full time"}
-PERIOD_LABELS = {FT: "Full time", H1: "1st half", H2: "2nd half"}
+PERIOD_LABELS = {FT: "Full time", H1: "1st half", H2: "2nd half", M5: "First 5 minutes"}
 
 
 @dataclass(frozen=True)
@@ -75,6 +75,10 @@ _UNSUPPORTED_WORDS = re.compile(
     r"\bassists?\b|\bminutes?\b|\bgoal ?kicks?\b|\bclean sheet\b|\bwin to nil\b|\bexact\b|\bcorrect score\b|\bhandicaps?\b|"
     r"\bhcp\b|\basian\b|\bodd\b|\beven\b|\bfirst goal\b|\blast goal\b|\bnext goal\b|\binterval\b|\beither half\b|"
     r"\bboth halves\b|\bhighest scoring\b|\brace to\b|\bto qualify\b|\bto advance\b|\bplayers?\b|\bmargin\b|\bto score\b")
+# "First 5 minutes", "1st 5 mins", "0-5 min", "5 Min ...", "00:00-05:00": the five-minute window First5Minute is about.
+_M5_RE = re.compile(
+    r"\b(?:first|1st)\s+5\s*(?:min(?:ute)?s?)?\b|\b0?0?\s*-\s*5\s*min(?:ute)?s?\b|\b5\s*min(?:ute)?s?\b|\b00:00\s*-\s*0?5:00\b")
+_GOAL_YN = re.compile(r"^(?:will there be )?(?:an? |any )?goals?(?: in| within| before| scored)?$")
 _QUARTER = re.compile(r"\d\s*[/,]\s*\d+(?:\.\d+)?\s*(?:$|\s)|\d\.?\d*\s*/\s*\d")
 
 
@@ -170,6 +174,11 @@ def canonicalize(market_name: str, outcome: str, specifier: str | None = None, h
     if _COMBO.search(name) or re.search(r"&|\band\b|\+", out):
         return _unsupported("Combined (multi-part) markets are not supported yet.")
     period = _period(name)
+    if _M5_RE.search(name):
+        period = M5
+        name = re.sub(r"\s+", " ", _M5_RE.sub(" ", name)).strip(" -:")
+        if _GOAL_YN.match(name) and out in {"yes", "no"}:     # "Goal in first 5 minutes?" Yes/No == total goals over/under 0.5
+            return CanonResult(Canon(M_OU, M5, Decimal("0.5"), "OVER" if out == "yes" else "UNDER"))
 
     if re.search(r"half ?time ?/ ?full ?time|\bht ?/ ?ft\b|\bht ?ft\b|\bhalf-?time/full-?time\b", name):
         parts = [p for p in re.split(r"\s*(?:/|-)\s*", out) if p]

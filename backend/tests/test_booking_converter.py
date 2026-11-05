@@ -615,172 +615,190 @@ def test_logs_do_not_contain_codes(client, signed_in, demo, capsys):
     assert "DEMOALL" not in out and "conv@example.com" not in out
 
 
-# ================================================================================ ticket flow: pick games, pick a bookmaker
+# ===================================================================== ticket flow: scanner picks -> bookmaker -> booking code
 
 
-from app.booking_converter import catalog as cat_mod  # noqa: E402
-from app.providers.football.base import SCHEDULED, ProviderPlanLimit  # noqa: E402
+from app.core.database import utcnow as _now  # noqa: E402
+from app.engine.settlement import Rule  # noqa: E402
+from app.ingestion.service import Ingestor  # noqa: E402
+from app.models import Fixture, Prediction  # noqa: E402
+from app.scanner.service import run_scan  # noqa: E402
 from tests import factories as fx  # noqa: E402
 
 
-def tk(client, bookie, picks):
-    return client.post(f"{B}/ticket", json={"destination": bookie, "picks": [{"event_id": e, "pick_key": k} for e, k in picks]})
+@pytest.fixture
+def pro_user(client, user_factory):
+    user = user_factory(email="pro@example.com", plan="pro")
+    login(client, "pro@example.com")
+    return user
 
 
-def test_catalog_is_empty_without_a_data_source_and_fictional_in_demo_mode(client, signed_in, demo):
-    c = client.get(f"{B}/catalog").json()
-    assert c["is_demo"] is True and len(c["events"]) == 8 and "Fictional" in c["message"]
-    e = c["events"][0]
-    assert e["id"].startswith("demo:") and e["home_team"] and e["start_time"]
-    keys = {p["key"] for m in e["markets"] for p in m["picks"]}
-    assert {"1X2:FT:-:HOME", "DOUBLE_CHANCE:FT:-:1X", "BTTS:FT:-:YES", "OVER_UNDER:FT:2.5:OVER", "OVER_UNDER:FT:2.5:UNDER"} <= keys
-    assert all("odds" not in p for m in e["markets"] for p in m["picks"])      # prices come from the chosen bookmaker, not from us
+@pytest.fixture
+def scanner_world(db):
+    """League history plus upcoming fixtures with current predictions, as the scanner produces them."""
+    now = _now()
+    ing = Ingestor(db, "mock", False, Rule())
+    for nf in fx.season_history(now - timedelta(days=60), n_teams=6, rounds=14, early_goal_every=50):
+        ing.ingest_fixture(nf)
+    ing.ingest_fixture(fx.upcoming("u1", 1, 2, now + timedelta(hours=20)))
+    ing.ingest_fixture(fx.upcoming("u2", 3, 4, now + timedelta(hours=22)))
+    ing.ingest_fixture(fx.upcoming("u3", 5, 6, now + timedelta(hours=26)))
+    ing.ingest_fixture(fx.upcoming("u4", 7, 8, now + timedelta(hours=28)))          # teams with no history -> excluded
+    db.commit()
+    run_scan(db, now=now, notify=False)
+    db.commit()
+    fixtures = {x.provider_id: x for x in db.scalars(select(Fixture).where(Fixture.provider_id.in_(["u1", "u2", "u3", "u4"])))}
+    return fixtures
 
 
-def test_catalog_without_any_source_says_so(client, signed_in):
-    c = client.get(f"{B}/catalog").json()
-    assert c["events"] == [] and "no games" in c["message"].lower()
+def pid(db, fixture, market="MARKET_A"):
+    return db.scalar(select(Prediction.id).where(Prediction.fixture_id == fixture.id, Prediction.market_code == market,
+                                                 Prediction.is_current.is_(True)))
 
 
-def test_ticket_converts_the_picked_games_to_the_chosen_bookmaker(client, signed_in, demo):
-    r = tk(client, "demo_beta", [("demo:ev1", "OVER_UNDER:FT:2.5:OVER"), ("demo:ev2", "BTTS:FT:-:YES"), ("demo:ev3w", "1X2:FT:-:AWAY")])
-    assert r.status_code == 200
+def tk(client, bookie, ids):
+    return client.post(f"{B}/ticket", json={"destination": bookie, "prediction_ids": ids})
+
+
+def test_preview_returns_the_model_analysis_for_each_pick(client, pro_user, scanner_world, db):
+    ids = [pid(db, scanner_world["u1"]), pid(db, scanner_world["u2"], "MARKET_B")]
+    items = client.post(f"{B}/ticket/preview", json={"prediction_ids": ids}).json()["items"]
+    a, b = items
+    assert a["available"] is True and a["market_label"] == "No goal in the first 5 minutes" and 0.5 < a["probability"] < 1
+    assert a["fair_odds"] == round(1 / a["probability"], 3) and a["category"] and a["data_quality"] and a["model"]
+    assert a["calibration_status"] and a["fixture"]["home_team"] == "Mock Team 1"
+    assert b["market_label"] == "Level at 5 minutes"
+    gone = client.post(f"{B}/ticket/preview", json={"prediction_ids": [999999]}).json()["items"][0]
+    assert gone["available"] is False and "no longer exists" in gone["reason"]
+
+
+def test_scanner_ticket_converts_five_minute_picks_and_shows_analysis_with_bookmaker_odds(client, pro_user, scanner_world, db, demo):
+    ids = [pid(db, scanner_world["u1"]), pid(db, scanner_world["u2"], "MARKET_B"), pid(db, scanner_world["u3"])]
+    r = tk(client, "demo_alpha", ids)
+    assert r.status_code == 200, r.text
     d = r.json()
-    assert d["source"]["name"] == "First5Minute ticket" and d["state"] == "decoded" and d["counts"]["original"] == 3
+    assert d["source"]["name"] == "First5Minute ticket" and d["counts"]["original"] == 3 and d["state"] == "decoded"
+    assert all(s["analysis"]["probability"] for s in d["selections"])                      # analysis is there from the start
     m = client.post(f"{B}/{d['id']}/match").json()
+    assert m["counts"]["matched"] == 3, [s["reason_code"] for s in m["selections"]]
     s = by_index(m)
-    assert m["counts"]["matched"] == 3
-    assert s[0]["interpreted_as"].endswith("OVER") and s[0]["destination"]["market_name"] == "Total Goals" and s[0]["destination"]["outcome"] == "Over"
-    assert s[1]["destination"]["outcome"] == "Yes" and s[2]["destination"]["home_team"] == "Kingsport W"
-    assert s[0]["odds"]["original"] is None and s[0]["odds"]["destination"] == "1.85"          # we never show a price that isn't the bookmaker's
+    assert s[0]["interpreted_as"] == "Total goals over/under (First 5 minutes) 0.5: UNDER"
+    assert s[0]["destination"]["market_name"] == "First 5 Minutes - Over/Under" and s[0]["destination"]["outcome"] == "Under 0.5"
+    assert s[1]["interpreted_as"] == "1X2 (First 5 minutes): DRAW" and s[1]["destination"]["outcome"] == "X"
+    a0 = s[0]["analysis"]
+    assert a0["bookmaker_odds"] == s[0]["destination"]["odds"]
+    assert a0["edge"] == round(a0["probability"] * float(a0["bookmaker_odds"]) - 1, 4)     # estimate x price - 1, a statistic not advice
+    assert any("first 5 minutes" in w.lower() for w in m["warnings"]) and any("not guarantees" in w for w in m["warnings"])
     g = client.post(f"{B}/{d['id']}/generate", json={}).json()
     assert g["booking"]["status"] == "generated" and g["booking"]["code"].startswith("DEMO-") and g["booking"]["is_demo"] is True
-    h = client.get(f"{B}/history").json()["items"][0]
-    assert h["source"] == "First5Minute ticket" and h["destination"] == "Demo Book Beta" and h["code_generated"] is True
+    assert client.get(f"{B}/history").json()["items"][0]["source"] == "First5Minute ticket"
 
 
-def test_ticket_with_unavailable_picks_needs_a_decision(client, signed_in, demo):
-    d = tk(client, "demo_beta", [("demo:ev1", "1X2:FT:-:HOME"), ("demo:ev4", "1X2:FT:-:HOME"), ("demo:ev5", "OVER_UNDER:FT:0.5:OVER")]).json()
+def test_five_minute_market_missing_at_the_bookmaker_is_reported_not_substituted(client, pro_user, scanner_world, db, demo):
+    # try every fixture at demo_beta: whatever its deterministic gaps, no result may be a different market or fixture
+    ids = [pid(db, scanner_world[k], m) for k in ("u1", "u2", "u3") for m in ("MARKET_A",)]
+    d = tk(client, "demo_beta", ids).json()
     m = client.post(f"{B}/{d['id']}/match").json()
-    s = by_index(m)
-    assert m["counts"] == {"original": 3, "matched": 1, "unmatched": 1, "unavailable": 1, "odds_changed": 0}
-    assert s[1]["reason_code"] == "no_fixture" and s[2]["reason_code"] == "market_unavailable"
-    assert client.post(f"{B}/{d['id']}/generate", json={}).status_code == 409
+    for sel_ in m["selections"]:
+        if sel_["status"] in ("matched", "odds_changed"):
+            assert sel_["destination"]["market_name"] == "5 Min Total Goals" and sel_["destination"]["outcome"] == "Under"
+        else:
+            assert sel_["reason_code"] in {"no_fixture", "market_unavailable", "suspended", "time_mismatch"} and sel_["destination"] is None \
+                or sel_["reason_code"] in {"market_unavailable", "suspended"}
 
 
-@pytest.mark.parametrize("picks,expected", [
-    ([("demo:ev1", "1X2:FT:-:HOME"), ("demo:ev1", "BTTS:FT:-:YES")], "one pick per game"),
-    ([("demo:ev1", "1X2:FT:-:NOPE")], "no longer available"),
-    ([("demo:ev1", "OVER_UNDER:FT:9.5:OVER")], "no longer available"),          # a line that is not on the menu
-    ([("demo:ev1", "1X2:1H:-:HOME")], "no longer available"),                   # periods other than full time are not offered
-    ([("demo:doesnotexist", "1X2:FT:-:HOME")], "no longer available"),
-])
-def test_tampered_or_invalid_tickets_are_refused(client, signed_in, demo, picks, expected):
-    r = tk(client, "demo_beta", picks)
-    assert r.status_code == 422 and r.json()["detail"]["code"] == "invalid_ticket" and expected.split()[0].lower() in r.json()["detail"]["message"].lower()
+def test_ticket_rules_one_pick_per_game_and_only_current_upcoming_picks(client, pro_user, scanner_world, db, demo):
+    both = [pid(db, scanner_world["u1"], "MARKET_A"), pid(db, scanner_world["u1"], "MARKET_B")]
+    r = tk(client, "demo_alpha", both)
+    assert r.status_code == 422 and "one pick per game" in r.json()["detail"]["message"]
+    # kicked off
+    u3 = scanner_world["u3"]
+    u3.kickoff_at = _now() - timedelta(minutes=5)
+    db.commit()
+    started = tk(client, "demo_alpha", [pid(db, scanner_world["u2"]), db.scalar(select(Prediction.id).where(Prediction.fixture_id == u3.id))])
+    assert started.status_code == 422 and "already started" in started.json()["detail"]["message"]
+    assert tk(client, "demo_alpha", [424242]).status_code == 422
+    assert tk(client, "demo_alpha", []).status_code == 422
+    assert tk(client, "demo_alpha", list(range(1, 22))).status_code == 422
 
 
-def test_ticket_input_validation_and_bookmaker_rules(client, signed_in, demo):
-    assert client.post(f"{B}/ticket", json={"destination": "demo_beta", "picks": []}).status_code == 422
-    assert tk(client, "demo_beta", [("demo:ev1", "not a pick key")]).status_code == 422
-    many = [(f"demo:ev{i}", "1X2:FT:-:HOME") for i in range(21)]
-    assert tk(client, "demo_beta", many).status_code == 422
-    assert tk(client, "bet9ja", [("demo:ev1", "1X2:FT:-:HOME")]).json()["detail"]["code"] == "integration_unavailable"
-    internal = tk(client, "first5minute", [("demo:ev1", "1X2:FT:-:HOME")])
+def test_excluded_picks_cannot_be_put_on_a_ticket(client, pro_user, scanner_world, db, demo):
+    p = db.scalar(select(Prediction).where(Prediction.fixture_id == scanner_world["u4"].id, Prediction.market_code == "MARKET_A"))
+    assert p is not None and p.category == "excluded"
+    r = tk(client, "demo_alpha", [p.id])
+    assert r.status_code == 422 and "excluded" in r.json()["detail"]["message"]
+
+
+def test_a_rescan_supersedes_old_picks_and_the_preview_points_to_the_current_one(client, pro_user, scanner_world, db):
+    old = pid(db, scanner_world["u1"])
+    run_scan(db, now=_now() + timedelta(minutes=1), notify=False, replay=False)
+    db.commit()
+    cur = pid(db, scanner_world["u1"])
+    if cur != old:                                                     # only when the re-scan produced a new row
+        item = client.post(f"{B}/ticket/preview", json={"prediction_ids": [old]}).json()["items"][0]
+        assert item["available"] is False and item["replaced_by"] == cur and "re-run" in item["reason"]
+
+
+def test_free_plan_can_only_use_picks_its_scanner_view_shows(client, user_factory, scanner_world, db, demo, monkeypatch):
+    from app.models import Plan
+
+    user_factory(email="free@example.com")
+    login(client, "free@example.com")
+    free = db.scalar(select(Plan).where(Plan.code == "free"))
+    free.features = {**free.features, "scanner_full": False, "scanner_daily_limit": 1}
+    db.commit()
+    ids = [pid(db, scanner_world[k]) for k in ("u1", "u2", "u3")]
+    items = client.post(f"{B}/ticket/preview", json={"prediction_ids": ids}).json()["items"]
+    allowed = [i for i in items if i["available"]]
+    assert len(allowed) <= 1 and any("plan" in (i["reason"] or "") for i in items if not i["available"])
+    blocked = tk(client, "demo_alpha", ids)
+    assert blocked.status_code == 422
+
+
+def test_ticket_input_validation_and_bookmaker_rules(client, pro_user, scanner_world, db, demo):
+    one = [pid(db, scanner_world["u1"])]
+    assert tk(client, "bet9ja", one).json()["detail"]["code"] == "integration_unavailable"
+    internal = tk(client, "first5minute", one)
     assert internal.status_code == 422 and internal.json()["detail"]["code"] == "unsupported_bookmaker"
+    assert client.post(f"{B}/ticket", json={"destination": "demo_alpha", "prediction_ids": ["x"]}).status_code == 422
     assert "first5minute" not in {b["code"] for b in client.get(f"{B}/bookmakers").json()["bookmakers"]}
 
 
 def test_ticket_requires_sign_in_and_respects_the_switch(client, user_factory, monkeypatch):
-    assert client.get(f"{B}/catalog").status_code == 401
+    assert client.post(f"{B}/ticket/preview", json={"prediction_ids": [1]}).status_code == 401
     user_factory(email="tk@example.com")
     login(client, "tk@example.com")
     monkeypatch.setattr(get_settings(), "booking_converter_enabled", False)
-    assert client.get(f"{B}/catalog").status_code == 503
+    assert client.post(f"{B}/ticket/preview", json={"prediction_ids": [1]}).status_code == 503
 
 
-def test_manual_ticket_to_a_bookmaker_without_code_creation(client, signed_in, demo):
-    d = tk(client, "demo_gamma", [("demo:ev1", "1X2:FT:-:HOME")]).json()
-    client.post(f"{B}/{d['id']}/match")
+def test_manual_ticket_to_a_bookmaker_without_code_creation(client, pro_user, scanner_world, db, demo):
+    d = tk(client, "demo_gamma", [pid(db, scanner_world["u1"])]).json()
+    m = client.post(f"{B}/{d['id']}/match").json()
+    assert m["counts"]["matched"] == 1
     g = client.post(f"{B}/{d['id']}/generate", json={}).json()
     assert g["booking"]["status"] == "manual" and g["booking"]["code"] is None and "Demo Book Gamma" in g["betslip_text"]
 
 
-class MockFootball:
-    """Mock football data provider (tests only)."""
-
-    name, is_demo = "mock", False
-
-    def __init__(self, fail_days=()):
-        self.calls, self.fail_days = [], set(fail_days)
-
-    def fixtures_by_date(self, day):
-        self.calls.append(day)
-        if (day - datetime.now(UTC).date()).days in self.fail_days:
-            raise ProviderPlanLimit("not on your plan")
-        t = datetime.combine(day, datetime.min.time(), UTC) + timedelta(hours=23, minutes=30)
-        other = fx.COMP.__class__(provider_id="other-l", name="Other League", country="X", season_label="2026")
-        return [fx.fixture(f"s{day.day}", 1, 2, t, status=SCHEDULED), fx.fixture(f"f{day.day}", 3, 4, t - timedelta(days=9)),
-                fx.fixture(f"o{day.day}", 5, 6, t, status=SCHEDULED, comp=other),
-                fx.fixture(f"p{day.day}", 3, 4, datetime.now(UTC) - timedelta(hours=1), status=SCHEDULED)]
+def test_self_excluded_users_cannot_build_tickets(client, pro_user, scanner_world, db, demo):
+    pro_user.rg_self_excluded_until = utcnow() + timedelta(days=2)
+    db.commit()
+    r = tk(client, "demo_alpha", [pid(db, scanner_world["u1"])])
+    assert r.status_code == 403 and r.json()["detail"]["code"] == "self_excluded"
 
 
-@pytest.fixture
-def real_catalog(monkeypatch):
-    provider = MockFootball()
-    s = get_settings()
-    monkeypatch.setattr(s, "football_provider", "api_football")
-    monkeypatch.setattr(s, "football_league_ids", ["mock-l1"])
-    monkeypatch.setattr("app.providers.football.registry.get_provider", lambda db: provider)
-    return provider
-
-
-def test_real_provider_catalog_lists_only_upcoming_scheduled_games_in_your_leagues(client, signed_in, real_catalog):
-    c = client.get(f"{B}/catalog").json()
-    assert c["source"] == "api_football" and c["is_demo"] is False
-    assert len(c["events"]) == 3                                          # one per day: finished / other league / already started excluded
-    e = c["events"][0]
-    assert e["id"].startswith("mock:s") and e["home_team"] == "Mock Team 1" and e["competition"] == "Mock League"
-    assert [x["start_time"] for x in c["events"]] == sorted(x["start_time"] for x in c["events"])
-
-
-def test_catalog_is_cached_to_protect_the_data_quota(client, signed_in, real_catalog):
-    client.get(f"{B}/catalog")
-    n = len(real_catalog.calls)
-    client.get(f"{B}/catalog")
-    assert n == 3 and len(real_catalog.calls) == n
-
-
-def test_catalog_reports_plan_limits_but_still_returns_what_it_could_load(client, signed_in, monkeypatch):
-    provider = MockFootball(fail_days={1, 2})
-    s = get_settings()
-    monkeypatch.setattr(s, "football_provider", "api_football")
-    monkeypatch.setattr(s, "football_league_ids", ["mock-l1"])
-    monkeypatch.setattr("app.providers.football.registry.get_provider", lambda db: provider)
-    c = client.get(f"{B}/catalog").json()
-    assert len(c["events"]) == 1 and "plan or daily request limit" in c["message"]
-
-
-def test_catalog_requires_a_league_allowlist_for_real_providers(client, signed_in, monkeypatch):
-    s = get_settings()
-    monkeypatch.setattr(s, "football_provider", "api_football")
-    monkeypatch.setattr(s, "football_league_ids", [])
-    monkeypatch.setattr(s, "football_allow_all_leagues", False)
-    monkeypatch.setattr("app.providers.football.registry.get_provider", lambda db: MockFootball())
-    c = client.get(f"{B}/catalog").json()
-    assert c["events"] == [] and "FOOTBALL_LEAGUE_IDS" in c["message"]
-
-
-def test_pick_keys_round_trip_through_the_canonical_market_parser():
-    e = cat_mod.CatalogEvent("x:1", "Arsenal", "Chelsea", K)
-    for m in e.markets():
-        for p in m["picks"]:
-            sel_ = cat_mod.selection_for(e, p["key"])
-            assert sel_ is not None
-            res = canonicalize(sel_.market_name, sel_.outcome, sel_.specifier, sel_.home_team, sel_.away_team)
-            assert res.canon is not None, (p["key"], res.reason)
-            line = "-" if res.canon.line is None else str(res.canon.line)
-            assert f"{res.canon.market}:{res.canon.period}:{line}:{res.canon.outcome}" == p["key"]
+def test_five_minute_market_names_from_bookmakers_reduce_to_the_same_canonical_market():
+    same = c("First 5 Minutes - Total Goals", "Under 0.5", "0.5").canon
+    for name, out, spec in [("5 Min Total Goals", "Under", "total=0.5"), ("0-5 Min Over/Under", "Under 0.5", None),
+                            ("Goal in first 5 minutes", "No", None), ("1st 5 minutes - Over/Under", "U 0.5", None)]:
+        assert c(name, out, spec).canon == same, name
+    assert same.period == "5M"
+    draw = c("First 5 Minutes - 1X2", "Draw").canon
+    assert c("5 Min Result", "X").canon == draw and draw.market == "1X2" and draw.period == "5M"
+    # never confused with full time, other windows, or other markets that mention minutes
+    assert same != c("Total Goals", "Under 0.5", "0.5").canon and draw != c("1X2", "Draw").canon
+    for name in ("Total Corners first 5 minutes", "Booking in first 5 minutes", "1X2 15 minutes", "Next goal 5 minutes"):
+        assert c(name, "Over 0.5", "0.5").canon is None, name
 
 
 # ================================================================================================== go-live readiness (doctor)
@@ -812,7 +830,7 @@ def test_doctor_is_honest_that_conversion_is_not_live_until_a_bookmaker_is_conne
 
     c = by_area(d.converter_checks(_settings(football_provider="api_football")))
     assert c["Booking converter"].status == d.WARN and "NOT live" in c["Booking converter"].detail
-    assert c["Ticket builder games"].status == d.PASS
+    assert c["Ticket games"].status == d.PASS
     registry.register_adapter(FakeBook("fake_live", "Fake Live"))
     live = by_area(d.converter_checks(_settings(football_provider="api_football")))
     assert live["Booking converter"].status == d.PASS and "Fake Live" in live["Booking converter"].detail

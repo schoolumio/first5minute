@@ -103,9 +103,9 @@ def converter_checks(s: Settings) -> list[Check]:
         names = ", ".join(demo) if demo else "BOOKING_CONVERTER_DEMO=true"
         c.append(Check("Converter demo", _strict(s.is_production), f"Demo bookmakers are ON ({names}): fictional, labelled DEMO."))
     if s.football_provider == "demo":
-        c.append(Check("Ticket builder games", WARN, "Games are fictional (demo)."))
+        c.append(Check("Ticket games", WARN, "Scanner games (and so ticket games) are fictional demo data."))
     else:
-        c.append(Check("Ticket builder games", PASS, "Games come from your football data provider."))
+        c.append(Check("Ticket games", PASS, "Tickets are built from real scanner games. Run `scan` after syncing to refresh them."))
     return c
 
 

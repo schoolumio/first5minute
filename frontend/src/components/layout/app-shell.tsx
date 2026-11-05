@@ -15,6 +15,7 @@ import {
   Radar,
   Scale,
   ShieldCheck,
+  Ticket,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
@@ -26,10 +27,12 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { relative } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
+import { useTicket } from "@/lib/ticket";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/scanner", label: "Match scanner", icon: Radar },
+  { href: "/ticket", label: "My ticket", icon: Ticket },
   { href: "/odds", label: "Odds comparison", icon: Scale },
   { href: "/booking-code-converter", label: "Convert Booking Code", icon: ArrowLeftRight },
   { href: "/predictions", label: "Prediction history", icon: History },
@@ -39,6 +42,7 @@ const NAV = [
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user } = useAuth();
+  const { items: ticket } = useTicket();
   const items = user?.role === "admin" ? [...NAV, { href: "/admin", label: "Admin", icon: ShieldCheck }] : NAV;
   return (
     <nav className="flex flex-col gap-1 p-3" aria-label="Main">
@@ -56,6 +60,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           >
             <Icon className="h-4 w-4" aria-hidden />
             {label}
+            {href === "/ticket" && ticket.length > 0 && <Badge tone="brand" className="ml-auto">{ticket.length}</Badge>}
           </Link>
         );
       })}

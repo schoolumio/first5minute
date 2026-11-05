@@ -5,6 +5,7 @@ import { Bookmark, BookmarkCheck } from "lucide-react";
 import { useState } from "react";
 import { Badge, CategoryBadge, DemoBadge, QualityIndicator } from "@/components/ui/badge";
 import { ProbabilityBar, ProbabilityValue } from "@/components/ui/data";
+import { AddToTicketButton } from "@/components/ticket/add-button";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { kickoff, MARKET_LABEL, minSample, relative } from "@/lib/format";
@@ -30,7 +31,7 @@ export function PredictionCard({ p, threshold, saved: initialSaved = false }: { 
   };
   return (
     <Link href={`/matches/${fx.id}`}
-      className="group block rounded-[var(--radius-lg)] border border-border bg-surface p-4 transition-colors hover:border-border-strong hover:bg-surface-2/60">
+      className="group block min-w-0 rounded-[var(--radius-lg)] border border-border bg-surface p-4 transition-colors hover:border-border-strong hover:bg-surface-2/60">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-subtle">
@@ -76,6 +77,7 @@ export function PredictionCard({ p, threshold, saved: initialSaved = false }: { 
           <span>Model edge <span className={cn("tabular font-semibold", p.edge > 0 ? "text-brand-400" : "text-muted")}>{(p.edge * 100).toFixed(1)}%</span></span>
         )}
       </div>
+      <div className="mt-3 flex justify-end"><AddToTicketButton p={p} /></div>
     </Link>
   );
 }

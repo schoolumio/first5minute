@@ -67,26 +67,26 @@ def decode(body: DecodeIn, request: Request, user: User = Depends(require_verifi
         raise
 
 
-class TicketPick(BaseModel):
-    event_id: str = Field(min_length=3, max_length=80)
-    pick_key: str = Field(min_length=3, max_length=60, pattern=r"^[A-Z0-9_]+:[A-Z0-9]+:[0-9.\-]+:[A-Z0-9]+$")
-
-
 class TicketIn(BaseModel):
     destination: str = Field(min_length=2, max_length=48, pattern=r"^[A-Za-z0-9_-]+$")
-    picks: list[TicketPick] = Field(min_length=1, max_length=20)
+    prediction_ids: list[int] = Field(min_length=1, max_length=20)
 
 
-@router.get("/catalog")
-def catalog(request: Request, user: User = Depends(require_verified), db: Session = Depends(get_db)) -> dict:
-    return _svc(request, user, db).catalog()
+class PreviewIn(BaseModel):
+    prediction_ids: list[int] = Field(min_length=1, max_length=20)
+
+
+@router.post("/ticket/preview")
+def ticket_preview(body: PreviewIn, request: Request, user: User = Depends(require_verified), db: Session = Depends(get_db)) -> dict:
+    """Fresh analysis and availability for the scanner picks on a ticket."""
+    return {"items": _svc(request, user, db).ticket_preview(body.prediction_ids)}
 
 
 @router.post("/ticket")
 def ticket(body: TicketIn, request: Request, user: User = Depends(require_verified), db: Session = Depends(get_db)) -> dict:
     svc = _svc(request, user, db)
     _throttle(user)
-    return svc.ticket(body.destination, [(p.event_id, p.pick_key) for p in body.picks])
+    return svc.ticket(body.destination, body.prediction_ids)
 
 
 @router.post("/{conversion_id}/match")

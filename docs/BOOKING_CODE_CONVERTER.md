@@ -19,12 +19,18 @@ In the UI these bookmakers show "not connected yet" and conversions that involve
 
 ## Two ways to use it
 
-1. **Build a ticket** (default tab): the punter picks games from the First5Minute catalogue (upcoming matches from your football data
-   provider; fictional in demo mode), chooses a bookmaker and presses **Generate code**. Picks are one per game from a fixed menu (1X2, double
-   chance, both teams to score, total goals 0.5-4.5). The server rebuilds every selection from the catalogue (it never trusts team names or
-   markets sent by the browser), matches it at the chosen bookmaker, and, if everything matched, asks that bookmaker for a real code. The punter
-   copies the code and enters it on the bookmaker themselves. Prices shown are the bookmaker's, after matching.
-   API: `GET /catalog`, `POST /ticket` then the same `/match` and `/generate` steps below.
+1. **Ticket from the scanner** (the main flow). In the **Match scanner** (or a match page) the punter reads the model's analysis and presses
+   **Add to ticket** on the picks they like: *No goal in the first 5 minutes* (market A) or *Level at 5 minutes* (market B), one pick per game.
+   The floating ticket bar / **My ticket** page lists each leg with the probability, fair odds, category, data quality, confidence, sample size
+   and calibration status. They choose a bookmaker and press **Generate booking code**; the ticket is matched at that bookmaker and, when every
+   leg matched and the bookmaker supports it, a genuine code is returned for the punter to copy and place themselves. After matching the page
+   shows the bookmaker's price next to the model estimate and the estimated edge (estimate x price - 1: a statistic, not advice).
+   API: `POST /ticket/preview` (fresh analysis + availability; picks superseded by a re-scan point to the current one), `POST /ticket`, then the
+   same `/match` and `/generate` steps below. The server rebuilds every selection from the stored predictions (it never trusts team names or
+   markets sent by the browser), rejects picks that have started, are excluded, are not in the user's plan's scanner view, or repeat a game.
+   Five-minute markets are rare and bookmakers define the window differently; the engine maps a leg only to an **exactly equivalent** market
+   ("First 5 minutes / 0-5 min / 5 Min" total goals under 0.5, or 1X2 draw) and otherwise reports "not offered". A warning about window and
+   settlement differences is always shown, and a per-bookmaker settlement-rule mismatch (admin setting) adds a stronger one.
 2. **Convert a code**: paste a code from one bookmaker and convert it to another.
 
 ## How a conversion works

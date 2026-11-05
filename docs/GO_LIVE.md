@@ -5,7 +5,7 @@ Read this first: what "live" can and cannot mean today.
 | Part | Can be live now? | What it needs |
 |---|---|---|
 | Website, sign-in, accounts, scanner pages | **Yes** | a server (this guide) |
-| Live matches (scanner, ticket-builder game list) | **Yes, with a paid football-data plan** | `FOOTBALL_PROVIDER=api_football` + a plan that can read today's matches. The free plan only sees yesterday/today/tomorrow and has no recent history |
+| Live matches (the scanner, and so the games players can add to a ticket) | **Yes, with a paid football-data plan** | `FOOTBALL_PROVIDER=api_football` + a plan that can read today's matches. The free plan only sees yesterday/today/tomorrow and has no recent history |
 | Odds on the odds board | **Partly** | `ODDS_PROVIDER=api_football` gives pre-match odds from the provider's bookmakers, refreshed about daily by the provider. It does not give a Bet9ja/SportyBet price, and five-minute markets are unverified |
 | **Real booking codes from a bookmaker** | **No, not until you have an official integration** | a partnership/API agreement per bookmaker (see section 5). No public booking-code API was found for the seven bookmakers; unofficial endpoints are not used |
 | Payments | Yes, in Paystack TEST mode; live with live keys | Paystack account + webhook URL |
@@ -192,8 +192,9 @@ FOOTBALL_LEAGUE_IDS=39               # find ids: python -m app.cli leagues --sea
 ```
 
 Restart the API, then run `python -m app.cli provider-check`. If it reports your plan cannot read today's matches, you need a plan that can.
-With data flowing the Ticket-builder tab lists upcoming matches (cached 5 minutes to protect your request quota) and the scanner fills as
-history is downloaded (see `docs/LOCAL_TESTING.md`, section 10).
+With data flowing, run `python -m app.cli sync` then `scan`: the scanner fills as history is downloaded (see `docs/LOCAL_TESTING.md`,
+section 10), and players add those games and the model's analysis to their ticket. Before any bookmaker is connected, tickets can only be
+converted on the demo bookmakers.
 
 For odds: set `ODDS_PROVIDER=api_football`, run `python -m app.cli odds`, and inspect the odds board. Do not promote it as "live bookmaker odds":
 it is the provider's pre-match data.

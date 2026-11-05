@@ -86,6 +86,7 @@ export interface ConversionSelection {
   source: { home_team: string; away_team: string; competition: string | null; start_time: string | null; market_name: string; outcome: string; odds: string | null };
   destination: { home_team: string; away_team: string; competition: string | null; start_time: string | null; market_name: string | null; outcome: string | null; odds: string | null } | null;
   odds: { original: string | null; destination: string | null; change: "up" | "down" | "same" | null };
+  analysis?: SelectionAnalysis;
 }
 export interface Conversion {
   id: string; state: "decoded" | "matched" | "generated" | "manual"; deduplicated: boolean; is_demo: boolean;
@@ -95,12 +96,15 @@ export interface Conversion {
   selections: ConversionSelection[];
   totals: { original_odds: string | null; destination_odds: string | null; destination_covers_all: boolean };
   booking: { status: "generated" | "manual" | "failed"; code: string | null; share_url: string | null; is_demo: boolean; message: string | null } | null;
-  needs_decision: boolean; betslip_text: string | null; notice: string;
+  needs_decision: boolean; betslip_text: string | null; notice: string; warnings: string[];
 }
 
-export interface CatalogPick { key: string; label: string }
-export interface CatalogMarket { key: string; label: string; picks: CatalogPick[] }
-export interface CatalogEvent {
-  id: string; home_team: string; away_team: string; start_time: string; competition: string | null; markets: CatalogMarket[];
+export interface SelectionAnalysis {
+  prediction_id: number; fixture_id: number; market: Market; market_label: string; probability: number; fair_odds: number | null;
+  category: Category; confidence: "high" | "medium" | "low"; data_quality: Quality; sample: number; calibration_status: string;
+  model: string; reasons: string[]; is_demo: boolean; bookmaker_odds?: string | null; edge?: number | null;
 }
-export interface Catalog { source: string; is_demo: boolean; message: string | null; max_picks: number; events: CatalogEvent[] }
+export interface TicketPreviewItem extends Partial<SelectionAnalysis> {
+  prediction_id: number; available: boolean; reason: string | null; replaced_by: number | null;
+  fixture?: { home_team: string; away_team: string; competition: string; kickoff_at: string };
+}

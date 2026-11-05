@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 from app.booking_converter.adapters.base import BookmakerAdapter
 from app.booking_converter.adapters.registry import all_adapters, get_adapter
 from app.booking_converter.adapters.ticket import TICKET_SOURCE
-from app.booking_converter.catalog import load_catalog, selection_for
 from app.booking_converter.domain import Pick, Selection
 from app.booking_converter.errors import (
     ConversionBusy,
@@ -43,7 +42,7 @@ from app.booking_converter.store import store as default_store
 from app.core.config import get_settings
 from app.core.database import utcnow
 from app.core.logging import get_logger
-from app.models import BookingConversion, User
+from app.models import BookingConversion, Bookmaker, Prediction, User
 from app.services.responsible import limit_status
 
 log = get_logger(__name__)
@@ -75,6 +74,37 @@ def _result_dict(r: SelectionResult) -> dict:
         "odds": {"original": _money(r.source.odds), "destination": _money(r.dest_outcome.odds) if r.matched and r.dest_outcome else None,
                  "change": r.odds_change},
     }
+
+
+MARKET_LABELS = {"MARKET_A": "No goal in the first 5 minutes", "MARKET_B": "Level at 5 minutes"}
+FIVE_MIN_NOTE = ("Bookmakers define “the first 5 minutes” slightly differently (for example up to 4:59 or including 5:00), and some "
+                 "settle by the match clock and others by the feed. Read this market's rules on the bookmaker before you bet.")
+
+
+def _analysis(p: Prediction) -> dict:
+    """What the model said about this pick: shown next to the ticket so the choice is informed. Estimates, not guarantees."""
+    return {"prediction_id": p.id, "fixture_id": p.fixture_id, "market": p.market_code,
+            "market_label": MARKET_LABELS.get(p.market_code, p.market_code), "probability": round(p.probability, 5),
+            "fair_odds": round(1 / p.probability, 3) if p.probability > 0 else None, "category": p.category,
+            "confidence": p.confidence, "data_quality": p.data_quality, "sample": min(p.sample_home, p.sample_away),
+            "calibration_status": p.model_version.calibration_status, "model": f"{p.model_version.name} v{p.model_version.version}",
+            "reasons": list(p.category_reasons or []), "is_demo": p.is_demo}
+
+
+def _fixture_info(fx) -> dict:
+    return {"home_team": fx.home_team.name, "away_team": fx.away_team.name, "competition": fx.competition.name,
+            "kickoff_at": fx.kickoff_at.isoformat()}
+
+
+def _selection_for_prediction(p: Prediction) -> Selection:
+    fx = p.fixture
+    if p.market_code == "MARKET_A":
+        name, outcome, spec = "First 5 Minutes - Total Goals", "Under 0.5", "0.5"
+    else:
+        name, outcome, spec = "First 5 Minutes - 1X2", "Draw", None
+    return Selection(home_team=fx.home_team.name, away_team=fx.away_team.name, market_name=name, outcome=outcome,
+                     event_id=f"f5m:{fx.id}", sport="football", competition=fx.competition.name, start_time=fx.kickoff_at,
+                     odds=None, specifier=spec)
 
 
 def _pick_dict(p: Pick) -> dict:
@@ -146,6 +176,19 @@ class ConversionService:
                       "odds": {"original": _money(s.odds), "destination": None, "change": None}} for i, s in enumerate(sels)]
         else:
             items = results
+        analysis = rec.get("analysis") or {}
+        if analysis:
+            enriched = []
+            for it in items:
+                a = analysis.get(str(it["index"]))
+                if a is not None:
+                    a = dict(a)
+                    d = (it.get("destination") or {}).get("odds") if it["status"] in (MATCHED, ODDS_CHANGED) else None
+                    a["bookmaker_odds"] = d
+                    a["edge"] = round(a["probability"] * float(d) - 1, 4) if d else None
+                    it = {**it, "analysis": a}
+                enriched.append(it)
+            items = enriched
         matched = [i for i in items if i["status"] in (MATCHED, ODDS_CHANGED)]
         counts = {"original": len(items), "matched": len(matched) if results is not None else 0,
                   "unmatched": sum(i["status"] == UNMATCHED for i in items),
@@ -170,9 +213,27 @@ class ConversionService:
             "counts": counts, "selections": items,
             "totals": {"original_odds": _money(original_total), "destination_odds": _money(dest_total),
                        "destination_covers_all": bool(matched) and counts["matched"] == counts["original"]},
+            "warnings": self._warnings(rec, matched, analysis),
             "booking": rec.get("booking"), "needs_decision": needs_decision, "betslip_text": self._slip_text(rec, dst) if matched else None,
             "notice": NOTICE,
         }
+
+    def _warnings(self, rec: dict, matched: list[dict], analysis: dict) -> list[str]:
+        out: list[str] = []
+        if analysis and any("First 5 minutes" in (i.get("interpreted_as") or "") for i in matched):
+            out.append(FIVE_MIN_NOTE)
+            try:
+                from app.services.settings import default_rule_row
+
+                bm = self.db.scalar(select(Bookmaker).where(Bookmaker.code == rec["destination"]))
+                if bm is not None and bm.settlement_rule_id and bm.settlement_rule_id != default_rule_row(self.db).id:
+                    out.append(f"{bm.name} settles the five-minute window differently from the model's default rule, so the estimate "
+                               "may not apply exactly.")
+            except Exception as exc:  # noqa: BLE001 - a missing rule must never break the result screen
+                log.warning("settlement_rule_lookup_failed", error=type(exc).__name__)
+        if analysis:
+            out.append("Probabilities are model estimates, not guarantees. They can be wrong and say nothing about what a bookmaker pays.")
+        return out
 
     @staticmethod
     def _slip_text(rec: dict, dst: BookmakerAdapter) -> str | None:
@@ -237,15 +298,46 @@ class ConversionService:
         finally:
             self.store.release(f"lock:{h}")
 
-    # ---- ticket flow: the punter picks games on First5Minute, then a bookmaker -------------------------
-    def catalog(self) -> dict:
-        self._guard()
-        cat = load_catalog(self.db, self.store)
-        return {"source": cat.source, "is_demo": cat.is_demo, "message": cat.message, "max_picks": MAX_TICKET_PICKS,
-                "events": [{**e.to_dict(), "markets": e.markets()} for e in cat.events]}
+    # ---- ticket flow: the punter picks scanner games, then a bookmaker ---------------------------------
+    def _visible_prediction_ids(self) -> set[int] | None:
+        """None = the user's plan shows every scanner game; otherwise the ids their plan lets them see (e.g. the Free top-N)."""
+        from app.api.v1.scanner import ScannerFilters, run_scanner
+        from app.services.entitlements import entitlements
 
-    def ticket(self, destination: str, picks: list[tuple[str, str]]) -> dict:
-        """Start a conversion from picks made on First5Minute. Selections are rebuilt server-side from the catalogue."""
+        if entitlements(self.db, self.user)["features"].get("scanner_full"):
+            return None
+        res = run_scanner(self.db, self.user, ScannerFilters(page_size=100))
+        return {i["id"] for i in res["items"]}
+
+    def ticket_preview(self, prediction_ids: list[int]) -> list[dict]:
+        """Current analysis for each scanner pick, and whether it can still go on a ticket (never trusts the browser's copy)."""
+        self._guard()
+        now = utcnow()
+        preds = {p.id: p for p in self.db.scalars(select(Prediction).where(Prediction.id.in_(prediction_ids)))}
+        visible = self._visible_prediction_ids()
+        out = []
+        for pid in prediction_ids:
+            p = preds.get(pid)
+            if p is None:
+                out.append({"prediction_id": pid, "available": False, "reason": "This pick no longer exists.", "replaced_by": None})
+                continue
+            fx = p.fixture
+            item = {**_analysis(p), "fixture": _fixture_info(fx), "available": True, "reason": None, "replaced_by": None}
+            if not p.is_current:
+                cur = self.db.scalar(select(Prediction.id).where(Prediction.fixture_id == p.fixture_id,
+                                                                 Prediction.market_code == p.market_code, Prediction.is_current.is_(True)))
+                item.update(available=False, reason="The model has re-run for this match: review the updated estimate.", replaced_by=cur)
+            elif fx.status != "scheduled" or fx.kickoff_at <= now:
+                item.update(available=False, reason="This match has already started.")
+            elif p.category == "excluded":
+                item.update(available=False, reason="This match is excluded from the scanner (not enough reliable data).")
+            elif visible is not None and p.id not in visible:
+                item.update(available=False, reason="This pick is not included in your plan's scanner view.")
+            out.append(item)
+        return out
+
+    def ticket(self, destination: str, prediction_ids: list[int]) -> dict:
+        """Start a conversion from scanner picks. Selections are rebuilt on the server from the stored predictions."""
         t0 = time.monotonic()
         self._guard()
         dst = get_adapter(destination)
@@ -253,30 +345,29 @@ class ConversionService:
             raise UnsupportedBookmaker()
         if not (dst.capabilities.can_find_events and dst.available()):
             raise IntegrationUnavailable(f"{dst.name} can't be used yet because no official integration is connected.")
-        if not picks:
-            raise InvalidTicket("Pick at least one game first.")
-        if len(picks) > MAX_TICKET_PICKS:
+        ids = list(dict.fromkeys(prediction_ids))
+        if not ids:
+            raise InvalidTicket("Add at least one game to your ticket first.")
+        if len(ids) > MAX_TICKET_PICKS:
             raise InvalidTicket(f"A ticket can have at most {MAX_TICKET_PICKS} games.")
-        events = {e.id: e for e in load_catalog(self.db, self.store).events}
-        seen: set[str] = set()
-        selections: list[Selection] = []
-        for event_id, key in picks:
-            event = events.get(event_id)
-            sel = selection_for(event, key) if event else None
-            if event is None or sel is None:
-                raise InvalidTicket("One of the picks is no longer available. Refresh the games and try again.")
-            if event_id in seen:
-                raise InvalidTicket("Choose only one pick per game.")
-            seen.add(event_id)
-            selections.append(sel)
+        items = self.ticket_preview(ids)
+        bad = next((i for i in items if not i["available"]), None)
+        if bad is not None:
+            raise InvalidTicket(bad["reason"])
+        if len({i["fixture_id"] for i in items}) != len(items):
+            raise InvalidTicket("Choose only one pick per game.")
+        preds = {p.id: p for p in self.db.scalars(select(Prediction).where(Prediction.id.in_(ids)))}
+        selections = [_selection_for_prediction(preds[i]) for i in ids]
         src = get_adapter(TICKET_SOURCE)
         row = BookingConversion(user_id=self.user.id, source_bookmaker=src.code, destination_bookmaker=dst.code, status="started",
-                                selections_total=len(selections), is_demo=dst.is_demo)
+                                selections_total=len(selections), is_demo=dst.is_demo or any(i["is_demo"] for i in items))
         self.db.add(row)
         self.db.flush()
         rec = {"id": hashlib.sha256(f"ticket{self.user.id}{time.time_ns()}".encode()).hexdigest()[:24], "owner": self.user.id,
                "source": src.code, "destination": dst.code, "state": "decoded", "selections": [x.to_dict() for x in selections],
-               "results": None, "picks": {}, "booking": None, "is_demo": dst.is_demo, "history_id": row.id, "gen_attempts": 0,
+               "analysis": {str(n): {k: v for k, v in it.items() if k not in ("available", "reason", "replaced_by", "fixture")}
+                            for n, it in enumerate(items)},
+               "results": None, "picks": {}, "booking": None, "is_demo": row.is_demo, "history_id": row.id, "gen_attempts": 0,
                "created_at": utcnow().isoformat()}
         self._save(rec)
         self.db.commit()

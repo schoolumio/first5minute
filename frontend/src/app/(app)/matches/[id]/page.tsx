@@ -6,6 +6,7 @@ import { ArrowLeft, Bookmark, Info } from "lucide-react";
 import { ComparisonChart, SERIES, TimingChart } from "@/components/charts/charts";
 import { OddsPanel } from "@/components/match/odds-panel";
 import { OutcomeBadge } from "@/components/match/prediction-row";
+import { AddToTicketButton } from "@/components/ticket/add-button";
 import { Badge, CategoryBadge, DemoBadge, QualityIndicator } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -27,7 +28,7 @@ interface Analysis {
   predictions: Partial<Record<Market, Prediction>>;
   prediction_history: Prediction[];
 }
-function PredictionPanel({ p, market }: { p?: Prediction; market: Market }) {
+function PredictionPanel({ p, market, fixture }: { p?: Prediction; market: Market; fixture: Fixture }) {
   if (!p) return <div className="rounded-[var(--radius-lg)] border border-border bg-surface p-5"><p className="text-sm text-muted">No {MARKET_LABEL[market]} prediction yet.</p></div>;
   const levels = (p.components.level_scores ?? null) as Record<string, number> | null;
   return (
@@ -41,6 +42,7 @@ function PredictionPanel({ p, market }: { p?: Prediction; market: Market }) {
       </div>
       <ProbabilityValue value={p.probability} className="mt-4 block text-4xl" />
       <ProbabilityBar value={p.probability} className="mt-3" />
+      {p.is_current && <div className="mt-3"><AddToTicketButton p={{ ...p, fixture }} /></div>}
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted">Model confidence</dt><dd className="text-right font-semibold capitalize">{p.confidence} <span className="text-xs font-normal text-subtle">(±{pct(Number(p.components.uncertainty_sd ?? 0))})</span></dd>
         <dt className="text-muted">Data quality</dt><dd className="flex justify-end"><QualityIndicator quality={p.data_quality} /></dd>
@@ -160,8 +162,8 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <PredictionPanel p={data.predictions.MARKET_A} market="MARKET_A" />
-        <PredictionPanel p={data.predictions.MARKET_B} market="MARKET_B" />
+        <PredictionPanel p={data.predictions.MARKET_A} market="MARKET_A" fixture={data.fixture} />
+        <PredictionPanel p={data.predictions.MARKET_B} market="MARKET_B" fixture={data.fixture} />
       </div>
 
       <Card className="mt-6 scroll-mt-20" id="odds">

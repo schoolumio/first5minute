@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowRight, Check, CheckCircle2, Copy, ExternalLink, XCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge, CategoryBadge, QualityIndicator } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Stat } from "@/components/ui/data";
@@ -14,6 +14,33 @@ import type { Conversion, ConversionSelection, ConversionStatus } from "@/lib/ty
 const TONE: Record<ConversionStatus, "neutral" | "brand" | "warn" | "danger" | "info"> = {
   pending: "neutral", matched: "brand", odds_changed: "warn", unmatched: "danger", unavailable: "warn",
 };
+
+export function Warnings({ conv }: { conv: Conversion }) {
+  if (!conv.warnings?.length) return null;
+  return <div className="space-y-2">{conv.warnings.map((w) => <Alert key={w} tone="warn">{w}</Alert>)}</div>;
+}
+
+/** What the model said about a ticket pick, next to the bookmaker's price. Estimates, never guarantees. */
+export function AnalysisLine({ s, bookie }: { s: ConversionSelection; bookie: string }) {
+  const a = s.analysis;
+  if (!a) return null;
+  return (
+    <div className="mt-2 space-y-1.5 rounded-[var(--radius-md)] border border-border bg-surface-2/60 p-2.5 text-xs text-muted">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium text-fg">{a.market_label}</span>
+        <CategoryBadge category={a.category} />
+        <QualityIndicator quality={a.data_quality} />
+      </div>
+      <p>
+        Model estimate <span className="tabular font-semibold text-fg">{(a.probability * 100).toFixed(1)}%</span>
+        {a.fair_odds ? <> · fair odds <span className="tabular font-semibold text-fg">{a.fair_odds.toFixed(2)}</span></> : null}
+        {a.bookmaker_odds ? <> · {bookie} odds <span className="tabular font-semibold text-fg">{a.bookmaker_odds}</span></> : null}
+        {a.edge !== null && a.edge !== undefined ? <> · estimated edge <span className={a.edge > 0 ? "tabular font-semibold text-brand-400" : "tabular font-semibold text-muted"}>{(a.edge * 100).toFixed(1)}%</span></> : null}
+      </p>
+      <p className="text-subtle">{a.calibration_status === "calibrated" ? "Calibrated" : "Uncalibrated"} estimate from {a.model}; sample {a.sample} matches. Not a guarantee.</p>
+    </div>
+  );
+}
 
 export function StatusBadge({ status }: { status: ConversionStatus }) {
   return <Badge tone={TONE[status]}>{STATUS_LABEL[status]}</Badge>;
@@ -164,6 +191,7 @@ export function SelectionsList({ conv }: { conv: Conversion }) {
                 </div>
               </div>
             )}
+            <AnalysisLine s={s} bookie={conv.destination.name} />
           </li>
         ))}
       </ul>
@@ -177,7 +205,8 @@ export function SelectionsList({ conv }: { conv: Conversion }) {
             {conv.selections.map((s) => (
               <tr key={s.index} className="align-top">
                 <td className="px-5 py-3"><Fixture home={s.source.home_team} away={s.source.away_team} comp={s.source.competition} start={s.source.start_time} />
-                  <p className="mt-1 text-sm"><span className="text-muted">{s.source.market_name}:</span> <span className="font-semibold">{s.source.outcome}</span></p></td>
+                  <p className="mt-1 text-sm"><span className="text-muted">{s.source.market_name}:</span> <span className="font-semibold">{s.source.outcome}</span></p>
+                  <AnalysisLine s={s} bookie={conv.destination.name} /></td>
                 <td className="px-3 py-3">{hasDest ? <Destination s={s} /> : <span className="text-muted">-</span>}</td>
                 <td className="px-3 py-3">{isConverted(s) ? <OddsCell s={s} /> : <p className="tabular text-right text-subtle">{s.odds.original ?? "-"}</p>}</td>
                 <td className="px-5 py-3"><StatusBadge status={s.status} /></td>
