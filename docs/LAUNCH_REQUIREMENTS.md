@@ -91,6 +91,9 @@ Budget line: **$0 extra** if you use API-Football's odds within your plan (confi
 
 ## 4. Real booking codes: the bookmaker converter
 
+> The full step-by-step playbook (research findings, the pitch, outreach, what to ask, contract points, build and go-live) is in
+> [`BOOKMAKER_INTEGRATION_PLAYBOOK.md`](BOOKMAKER_INTEGRATION_PLAYBOOK.md). The summary below is the short version.
+
 This is the part money alone cannot buy: it needs each bookmaker's agreement.
 
 Status: Bet9ja, SportyBet, BetKing, MSport, 1xBet, Betway and BetPawa are registered but **not connected**. I found no public booking-code API
