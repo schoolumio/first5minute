@@ -74,3 +74,26 @@ export interface FixtureOdds {
   best_history: Partial<Record<Market, { t: string; best: number | null }[]>>;
   responsible_gambling: LimitStatus; self_excluded: boolean; message: string | null; notice: string;
 }
+
+export interface ConverterBookmaker {
+  code: string; name: string; is_demo: boolean; website: string | null; can_decode: boolean; can_be_destination: boolean;
+  can_generate: boolean; available: boolean; message: string | null; setup?: string;
+}
+export type ConversionStatus = "pending" | "matched" | "odds_changed" | "unmatched" | "unavailable";
+export interface ConversionSelection {
+  index: number; status: ConversionStatus; reason_code: string | null; reason: string | null; confidence: "high" | "medium" | null;
+  interpreted_as: string | null;
+  source: { home_team: string; away_team: string; competition: string | null; start_time: string | null; market_name: string; outcome: string; odds: string | null };
+  destination: { home_team: string; away_team: string; competition: string | null; start_time: string | null; market_name: string | null; outcome: string | null; odds: string | null } | null;
+  odds: { original: string | null; destination: string | null; change: "up" | "down" | "same" | null };
+}
+export interface Conversion {
+  id: string; state: "decoded" | "matched" | "generated" | "manual"; deduplicated: boolean; is_demo: boolean;
+  source: { code: string; name: string; is_demo: boolean };
+  destination: { code: string; name: string; is_demo: boolean; website: string | null; can_generate: boolean };
+  counts: { original: number; matched: number; unmatched: number; unavailable: number; odds_changed: number };
+  selections: ConversionSelection[];
+  totals: { original_odds: string | null; destination_odds: string | null; destination_covers_all: boolean };
+  booking: { status: "generated" | "manual" | "failed"; code: string | null; share_url: string | null; is_demo: boolean; message: string | null } | null;
+  needs_decision: boolean; betslip_text: string | null; notice: string;
+}

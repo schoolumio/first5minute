@@ -12,7 +12,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.deps import csrf_protect, rate_limit
-from app.api.v1 import account, admin, auth, fixtures, odds, predictions, scanner, subscriptions, system
+from app.api.v1 import (
+    account,
+    admin,
+    auth,
+    booking_converter,
+    fixtures,
+    odds,
+    predictions,
+    scanner,
+    subscriptions,
+    system,
+)
+from app.booking_converter.errors import ConverterError
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 
@@ -65,9 +77,14 @@ async def validation_handler(request: Request, exc: RequestValidationError) -> J
     return JSONResponse(status_code=422, content={"detail": "Validation failed", "errors": errors})
 
 
+@app.exception_handler(ConverterError)
+async def converter_error_handler(request: Request, exc: ConverterError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content={"detail": {"message": exc.message, "code": exc.code}})
+
+
 common = [Depends(csrf_protect), Depends(rate_limit("api"))]
 for r in (auth.router, account.router, fixtures.router, scanner.router, predictions.router, odds.router,
-          subscriptions.router, admin.router, system.router):
+          booking_converter.router, subscriptions.router, admin.router, system.router):
     app.include_router(r, prefix=settings.api_prefix, dependencies=common)
 
 

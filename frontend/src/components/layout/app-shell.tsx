@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowLeftRight,
   Bell,
   CircleUser,
   FlaskConical,
@@ -30,6 +31,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/scanner", label: "Match scanner", icon: Radar },
   { href: "/odds", label: "Odds comparison", icon: Scale },
+  { href: "/booking-code-converter", label: "Convert Booking Code", icon: ArrowLeftRight },
   { href: "/predictions", label: "Prediction history", icon: History },
   { href: "/account", label: "Account", icon: CircleUser },
 ];

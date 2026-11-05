@@ -10,6 +10,7 @@ from app.models.activity import (
     SavedMatch,
     SyncRun,
 )
+from app.models.booking import BookingConversion
 from app.models.football import (
     Competition,
     Fixture,
@@ -35,6 +36,7 @@ __all__ = [
     "AuditLog",
     "AuthToken",
     "BetTracking",
+    "BookingConversion",
     "BettingMarket",
     "Bookmaker",
     "Competition",

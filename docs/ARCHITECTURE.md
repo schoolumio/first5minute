@@ -164,6 +164,14 @@ real conclusions require real, much larger histories.
 * **Not done**: SMS/push, tax/VAT invoices, proration when changing plans mid-period, refunds UI, and the Paystack *subscription-plan* objects (we charge the
   authorisation ourselves so the renewal logic stays under our control and testable).
 
+## 3e. Booking Code Converter
+
+Package `backend/app/booking_converter/`: `adapters/` (one `BookmakerAdapter` per bookmaker + registry; the seven Nigerian bookmakers are
+registered as "not connected", a gated demo simulator exists for local testing), `canonical.py` (market reduction), `teams.py` (name matching),
+`matcher.py` (event + selection matching), `service.py` (decode -> match -> generate workflow), `store.py` (short-lived sessions and duplicate
+guards). API `api/v1/booking_converter.py`, history table `booking_conversions` (migration 0007, counts only), UI `/booking-code-converter`.
+No bookmaker integration is connected, so no real conversion is available until one is; see `docs/BOOKING_CODE_CONVERTER.md`.
+
 ## 4. Phase status
 
 | Phase | Status | Notes |

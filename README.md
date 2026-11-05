@@ -180,6 +180,10 @@ backtesting, plan permissions, admin permissions and Paystack webhooks.
 - Set `SENTRY_DSN` for error monitoring; logs are structured JSON outside development.
 - Backups and retention: see `docs/ARCHITECTURE.md` → *Security & operations*.
 
+## Booking Code Converter
+
+`/booking-code-converter` recreates a betslip from one bookmaker on another and returns a genuine destination booking code **only** when a connected, official integration provides one. No bookmaker integration is connected yet (the seven Nigerian bookmakers show as "not connected"); a labelled demo simulator exists for local testing. See [`docs/BOOKING_CODE_CONVERTER.md`](docs/BOOKING_CODE_CONVERTER.md).
+
 ## Responsible gambling
 
 Users can set 24-hour and 30-day stake limits, reality-check reminders and self-exclusion

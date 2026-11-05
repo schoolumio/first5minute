@@ -75,6 +75,17 @@ class Settings(BaseSettings):
     # --- Odds --------------------------------------------------------------
     odds_provider: Literal["none", "api_football", "demo"] = "none"
 
+    # --- Booking code converter ---------------------------------------------
+    booking_converter_enabled: bool = True
+    # Local-testing simulator with fictional bookmakers; NEVER in production (see validate_production). Codes it makes are labelled DEMO.
+    booking_converter_demo: bool = False
+    booking_converter_timeout_seconds: float = 15.0        # per request to a bookmaker integration
+    booking_converter_match_deadline_seconds: float = 45.0  # total time budget for matching one slip
+    booking_converter_session_ttl_seconds: int = 900        # how long a decoded slip stays available for the next step
+    booking_converter_max_selections: int = 40
+    booking_converter_per_minute: int = 8                   # per user (or IP when signed out is not allowed) per minute
+    booking_converter_per_hour: int = 60
+
     # --- Machine learning ---------------------------------------------------
     model_dir: str = "./model_store"          # joblib artifacts of trained models
     mlflow_tracking_uri: str | None = None    # e.g. sqlite:///mlflow.db or http://mlflow:5000 (unset = no tracking)
@@ -124,6 +135,8 @@ class Settings(BaseSettings):
             problems.append("COOKIE_SECURE must be true in production (HTTPS)")
         if self.email_backend != "smtp":
             problems.append("EMAIL_BACKEND must be smtp in production")
+        if self.booking_converter_demo:
+            problems.append("BOOKING_CONVERTER_DEMO is a test simulator and cannot be used in production")
         if self.payment_provider == "demo":
             problems.append("PAYMENT_PROVIDER=demo is a test simulator and cannot be used in production")
         if problems:
